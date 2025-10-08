@@ -10,13 +10,16 @@ import unicodedata
 
 
 class SimplePredict:
-    def __init__(self, dict_dir="/home/havatar/dicts"):
+    def __init__(self, dict_dir="/home/havatar/Avatar-robot/dicts"):
         self.dict_dir = dict_dir
         self.words = []
+        self.language_words = {}  # Store words by language
         self.reload()
 
     def reload(self):
         self.words.clear()
+        self.language_words.clear()
+        
         try:
             os.makedirs(self.dict_dir, exist_ok=True)
             
@@ -33,9 +36,32 @@ class SimplePredict:
                 except Exception as e:
                     print(f"[Predict] failed to load words.txt: {e}")
             
+            # Load language-specific dictionaries
+            language_files = {
+                'en': 'en_common.txt',
+                'ro': 'ro_common.txt', 
+                'de': 'de_common.txt'
+            }
+            
+            for lang, filename in language_files.items():
+                lang_file = os.path.join(self.dict_dir, filename)
+                if os.path.exists(lang_file):
+                    try:
+                        lang_words = []
+                        with open(lang_file, "r", encoding="utf-8", errors="ignore") as f:
+                            for line in f:
+                                w = line.strip()
+                                if w:
+                                    lang_words.append(w)
+                                    self.words.append(w)  # Add to main list too
+                        self.language_words[lang] = lang_words
+                        print(f"[Predict] loaded {len(lang_words)} {lang} words from {filename}")
+                    except Exception as e:
+                        print(f"[Predict] failed to load {filename}: {e}")
+            
             # Load additional words from other dictionary files
             for fn in glob.glob(os.path.join(self.dict_dir, "*.txt")):
-                if os.path.basename(fn) == "words.txt":
+                if os.path.basename(fn) in ["words.txt", "en_common.txt", "ro_common.txt", "de_common.txt"]:
                     continue  # Already loaded
                 try:
                     with open(fn, "r", encoding="utf-8", errors="ignore") as f:
@@ -151,5 +177,47 @@ class SimplePredict:
             print(f"[Predict] Error learning words: {e}")
         
         return 0
+    
+    def get_language_words(self, language='en'):
+        """Get words specific to a language"""
+        return self.language_words.get(language, [])
+    
+    def suggest_language(self, prefix, language='en', limit=50):
+        """Get suggestions from language-specific dictionary"""
+        if not prefix:
+            return []
+        
+        # Extract just the last word being typed for word-only prediction
+        prefix_parts = prefix.strip().split()
+        if not prefix_parts:
+            return []
+        
+        # Get only the last word for prediction (ignore preceding text)
+        current_word = prefix_parts[-1].lower()
+        
+        # Get language-specific words
+        lang_words = self.get_language_words(language)
+        if not lang_words:
+            return self.suggest(prefix, limit)  # Fallback to all words
+        
+        matches = []
+        
+        # Enhanced diacritics support
+        def normalize_text(text):
+            # Remove diacritics but keep original structure
+            normalized = ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
+            return normalized.lower()
+        
+        normalized_prefix = normalize_text(current_word)
+        
+        for word in lang_words:
+            normalized_word = normalize_text(word)
+            if normalized_word.startswith(normalized_prefix):
+                matches.append(word)
+        
+        # Sort matches by length (shorter first) and then alphabetically
+        matches.sort(key=lambda x: (len(x), x.lower()))
+        
+        return matches[:limit]
 
 _predict = SimplePredict()

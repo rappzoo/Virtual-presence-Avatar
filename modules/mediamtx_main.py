@@ -660,106 +660,32 @@ def predict():
         
         predictions = []
         if len(query) > 0:
-            # Get current word being typed (last word in query)
-            words = query.strip().split()
-            current_word = words[-1].lower() if words else ''
+            # Use the enhanced predictor with language-specific suggestions
+            try:
+                predictions = _predict.suggest_language(query, language, limit)
+            except Exception as e:
+                print(f"[Predict] Error getting language-specific suggestions: {e}")
+                # Fallback to regular suggestions
+                predictions = _predict.suggest(query, limit)
             
-            # Base word dictionaries for each language
-            base_words = {
-                'en': {
-                    'h': ['hello', 'how', 'here', 'help', 'house', 'happy'],
-                    't': ['the', 'this', 'that', 'there', 'time', 'today'],
-                    'w': ['what', 'where', 'when', 'why', 'who', 'which'],
-                    'i': ['is', 'in', 'it', 'if', 'into', 'important'],
-                    'a': ['and', 'are', 'at', 'all', 'about', 'after'],
-                    's': ['so', 'see', 'say', 'some', 'should', 'system'],
-                    'm': ['my', 'me', 'more', 'much', 'make', 'many'],
-                    'c': ['can', 'come', 'could', 'call', 'computer', 'control'],
-                    'b': ['be', 'but', 'by', 'been', 'back', 'before'],
-                    'f': ['for', 'from', 'find', 'first', 'function', 'forward'],
-                    'g': ['go', 'get', 'good', 'great', 'give', 'going'],
-                    'l': ['like', 'look', 'let', 'last', 'left', 'learn'],
-                    'n': ['not', 'now', 'new', 'need', 'next', 'number'],
-                    'o': ['of', 'on', 'or', 'one', 'only', 'other'],
-                    'p': ['please', 'put', 'play', 'part', 'power', 'process'],
-                    'r': ['right', 'run', 'read', 'really', 'robot', 'remote'],
-                    'u': ['up', 'use', 'under', 'until', 'user', 'update'],
-                    'v': ['very', 'voice', 'video', 'view', 'value', 'version'],
-                    'y': ['you', 'yes', 'your', 'year', 'young', 'yesterday']
-                },
-                'ro': {
-                    's': ['salut', 'să', 'sunt', 'sistem', 'sunet', 'săptămână'],
-                    'c': ['camera', 'control', 'computer', 'cuvânt', 'când', 'cum'],
-                    'm': ['motor', 'microfon', 'mesaj', 'mă', 'multe', 'mâine'],
-                    'a': ['audio', 'avatar', 'acum', 'am', 'are', 'aici'],
-                    'v': ['video', 'voce', 'văd', 'vreau', 'vă', 'voi'],
-                    't': ['tank', 'text', 'timp', 'telefon', 'tare', 'toate'],
-                    'r': ['robot', 'ro', 'română', 'rețea', 'recent', 'repede'],
-                    'p': ['poate', 'putem', 'prima', 'până', 'poți', 'peste'],
-                    'f': ['funcție', 'foarte', 'fără', 'fiecare', 'face', 'frumos'],
-                    'b': ['baterie', 'bun', 'bine', 'bună', 'băiat', 'băieți'],
-                    'd': ['dacă', 'de', 'din', 'după', 'dacă', 'dacă'],
-                    'l': ['limbă', 'lângă', 'lucru', 'lume', 'luna', 'lângă'],
-                    'n': ['nu', 'nou', 'noapte', 'noi', 'nici', 'niciodată'],
-                    'o': ['o', 'ori', 'oriunde', 'orice', 'orișicând', 'orișicât'],
-                    'i': ['în', 'între', 'încă', 'întotdeauna', 'întâi', 'întâlnire'],
-                    'e': ['este', 'eu', 'el', 'ea', 'ele', 'ei'],
-                    'u': ['un', 'una', 'unde', 'următor', 'ultim', 'următoare']
-                },
-                'de': {
-                    'h': ['hallo', 'hier', 'haben', 'heute', 'helfen', 'haus'],
-                    'd': ['das', 'der', 'die', 'den', 'dem', 'des'],
-                    'i': ['ich', 'ist', 'in', 'im', 'ich', 'immer'],
-                    's': ['sie', 'sind', 'sein', 'soll', 'sollte', 'system'],
-                    'w': ['was', 'wer', 'wie', 'wo', 'wann', 'warum'],
-                    'm': ['mein', 'meine', 'mehr', 'mich', 'mir', 'möchte'],
-                    'k': ['kann', 'können', 'könnte', 'kommt', 'komme', 'kamera'],
-                    'a': ['auf', 'aus', 'aber', 'alle', 'auch', 'audio'],
-                    'b': ['bin', 'bist', 'bei', 'bis', 'bevor', 'batterie'],
-                    'f': ['für', 'für', 'fragen', 'finden', 'funktion', 'frei'],
-                    'g': ['gehen', 'geben', 'gut', 'gute', 'gibt', 'groß'],
-                    'l': ['lassen', 'liebe', 'leben', 'lernen', 'links', 'lang'],
-                    'n': ['nicht', 'nur', 'nach', 'nein', 'neu', 'nächste'],
-                    'o': ['oder', 'ohne', 'oben', 'offen', 'okay', 'online'],
-                    'p': ['pro', 'prozent', 'programm', 'problem', 'präsent', 'privat'],
-                    'r': ['richtig', 'rechts', 'roboter', 'radio', 'reise', 'raum'],
-                    't': ['tank', 'text', 'telefon', 'tastatur', 'taste', 'tür'],
-                    'v': ['video', 'viel', 'viele', 'versuchen', 'verstehen', 'vor'],
-                    'z': ['zu', 'zur', 'zum', 'zusammen', 'zuerst', 'zurück']
-                }
-            }
-            
-            # Combine base words with learned words
-            all_words = {}
-            if language in base_words:
-                all_words.update(base_words[language])
-            
-            # Add learned words for this language
-            if language in learned_words:
-                for letter, words_list in learned_words[language].items():
-                    if letter in all_words:
-                        all_words[letter].extend(words_list)
-                    else:
-                        all_words[letter] = words_list
-            
-            # Get first letter of current word
-            first_char = current_word[0] if current_word else ''
-            
-            # Find matching words
-            if first_char in all_words:
-                matching_words = [word for word in all_words[first_char] if word.startswith(current_word)]
-                # Sort by frequency (learned words first, then alphabetical)
-                predictions = sorted(matching_words, key=lambda x: (
-                    x not in base_words.get(language, {}).get(first_char, []),
-                    x
-                ))[:limit]
-            else:
-                predictions = []
+            # If no language-specific suggestions, try regular suggestions
+            if not predictions:
+                predictions = _predict.suggest(query, limit)
         
-        return jsonify({"ok": True, "items": predictions})
+        return jsonify({
+            "ok": True,
+            "items": predictions,
+            "language": language,
+            "query": query
+        })
+        
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Prediction error: {e}"})
-
+        print(f"[Predict] Error: {e}")
+        return jsonify({
+            "ok": False,
+            "msg": str(e),
+            "items": []
+        })
 @app.route('/learn_word', methods=['POST'])
 def learn_word():
     """Learn a new word for prediction"""
@@ -892,7 +818,23 @@ def play_sound(sound_id):
         print(f"[Sound] File exists: {sound_path.exists()}")
         
         if not sound_path.exists():
-            return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
+            # For sound IDs 10-19, use a default sound or create a beep
+            if sound_id >= 10:
+                # Use sound1.mp3 as default for extended sound IDs
+                default_sound_file = module_dir / ".." / "sounds" / "sound1.mp3"
+                if default_sound_file.exists():
+                    sound_path = default_sound_file.resolve()
+                    print(f"[Sound] Using default sound for ID {sound_id}: {sound_path}")
+                else:
+                    # Create a simple beep sound using system beep
+                    import subprocess
+                    try:
+                        subprocess.run(['beep', '-f', '800', '-l', '200'], check=False, capture_output=True)
+                        return jsonify({"ok": True, "msg": f"System beep played for sound {sound_id + 1}"})
+                    except:
+                        return jsonify({"ok": False, "msg": f"Sound file not found and no system beep available"})
+            else:
+                return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
         
         # Use mpg123 or ffplay to play MP3 files
         try:

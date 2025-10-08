@@ -202,8 +202,8 @@
     
     body {
       font-family: 'Orbitron', 'Courier New', monospace;
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%);
-      color: #cccccc;
+      background: linear-gradient(135deg, #0a0a0a 0%, #2e1a1a 50%, #3e1616 100%);
+      color: #e0e0e0;
       min-height: 100vh;
       overflow-x: auto;
       background-attachment: fixed;
@@ -214,21 +214,20 @@
       grid-template-areas:
         "tts tts tts"
         "motor video audio"
-        "sound video audio"
         "log log log";
-      grid-template-columns: 280px 1fr 340px;
-      grid-template-rows: 80px 1fr auto 70px;
-      gap: 15px;
-      padding: 15px;
+      grid-template-columns: 312px 1fr 320px;
+      grid-template-rows: 70px minmax(400px, 1fr) 60px;
+      gap: 12px;
+      padding: 12px;
       min-height: 100vh;
     }
     
     .panel {
-      background: rgba(45, 45, 45, 0.95);
-      border: 2px solid #ff8c00;
-      border-radius: 16px;
-      padding: 16px;
-      box-shadow: 0 0 20px rgba(255, 140, 0, 0.2);
+      background: rgba(40, 20, 20, 0.95);
+      border: 2px solid #cc3300;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 0 15px rgba(204, 51, 0, 0.3);
       backdrop-filter: blur(3px);
     }
     
@@ -236,23 +235,23 @@
       grid-area: tts;
       display: flex;
       align-items: center;
-      gap: 12px;
-      background: rgba(20, 20, 50, 0.95);
+      gap: 10px;
+      background: rgba(35, 15, 15, 0.95);
     }
     
     .tts input {
       flex: 1;
-      background: rgba(20, 20, 20, 0.8);
-      border: 2px solid #ff8c00;
-      color: #cccccc;
-      padding: 12px;
-      border-radius: 10px;
+      background: rgba(25, 10, 10, 0.9);
+      border: 2px solid #cc3300;
+      color: #e0e0e0;
+      padding: 10px;
+      border-radius: 8px;
       font: inherit;
       transition: box-shadow 0.3s;
     }
     
     .tts input:focus {
-      box-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
+      box-shadow: 0 0 8px rgba(204, 51, 0, 0.6);
       outline: none;
     }
     
@@ -264,46 +263,46 @@
     }
     
     .pill {
-      background: linear-gradient(145deg, #555, #666);
-      border: 1px solid #ff8c00;
-      color: #cccccc;
+      background: linear-gradient(145deg, #3a2a2a, #4a3a3a);
+      border: 1px solid #cc3300;
+      color: #e0e0e0;
       padding: 6px 12px;
       border-radius: 18px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 12px;
       transition: all 0.2s;
     }
     
     .pill:hover {
-      background: #ff8c00;
-      color: #000;
+      background: #cc3300;
+      color: #ffffff;
       transform: translateY(-1px);
     }
     
     .diacritic-pill {
-      background: #444;
-      color: #ff8c00;
+      background: #2a2a2a;
+      color: #cc3300;
       font-weight: bold;
-      font-size: 16px;
-      min-width: 32px;
+      font-size: 17px;
+      min-width: 34px;
       text-align: center;
     }
     
     .btn {
-      background: linear-gradient(145deg, #4a4a4a, #2a2a2a);
-      border: 2px solid #ff8c00;
-      color: #cccccc;
-      padding: 10px 14px;
-      border-radius: 10px;
+      background: linear-gradient(145deg, #660033, #990044);
+      border: 2px solid #cc3300;
+      color: #ffffff;
+      padding: 8px 12px;
+      border-radius: 8px;
       cursor: pointer;
       font: inherit;
       transition: all 0.3s;
     }
     
     .btn:hover {
-      background: #ff8c00;
-      color: #000;
-      box-shadow: 0 0 15px #ff8c00;
+      background: #cc3300;
+      color: #ffffff;
+      box-shadow: 0 0 12px #cc3300;
       transform: translateY(-2px);
     }
     
@@ -318,40 +317,51 @@
       color: #000;
     }
     
+    .btn-blue {
+      border-color: #cc3300;
+      color: #cc3300;
+      font-weight: bold;
+    }
+    
+    .btn-blue:hover {
+      background: #cc3300;
+      color: #000;
+    }
+    
     .lang {
       display: flex;
-      border: 2px solid #ff8c00;
-      border-radius: 10px;
+      border: 2px solid #cc3300;
+      border-radius: 8px;
       overflow: hidden;
     }
     
     .lang button {
-      background: #555;
+      background: #660033;
       border: none;
-      color: #cccccc;
-      padding: 10px 14px;
+      color: #ffffff;
+      padding: 8px 12px;
       cursor: pointer;
       flex: 1;
       transition: all 0.2s;
     }
     
     .lang .active {
-      background: #ff8c00;
-      color: #000;
+      background: #cc3300;
+      color: #ffffff;
       font-weight: bold;
     }
     
     .video {
       grid-area: video;
       text-align: center;
-      background: rgba(30, 30, 30, 0.95);
+      background: rgba(30, 15, 15, 0.95);
     }
     
     .video img {
       width: 100%;
       max-width: 920px;
-      border-radius: 12px;
-      border: 3px solid #ff8c00;
+      border-radius: 10px;
+      border: 3px solid #cc3300;
     }
     
     .video-info-bar {
@@ -359,13 +369,13 @@
       justify-content: space-between;
       align-items: center;
       background: rgba(0, 0, 0, 0.8);
-      border: 1px solid #ff8c00;
-      border-radius: 8px;
-      padding: 8px 12px;
-      margin: 10px auto 0 auto;
-      font-size: 11px;
+      border: 1px solid #cc3300;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin: 8px auto 0 auto;
+      font-size: 10px;
       flex-wrap: wrap;
-      gap: 15px;
+      gap: 12px;
       max-width: 920px;
       width: 100%;
     }
@@ -426,32 +436,36 @@
     
     .motor {
       grid-area: motor;
-      background: rgba(20, 40, 20, 0.95);
+      background: rgba(15, 25, 35, 0.95);
+      padding: 8px;
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
     }
     
     .grid {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-      margin: 15px 0;
+      gap: 4px;
+      margin: 6px 0;
     }
     
     .mbtn {
-      background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
-      border: 3px solid #00ff00;
-      color: #00ff00;
-      padding: 16px;
-      border-radius: 12px;
+      background: linear-gradient(145deg, #660033, #990044);
+      border: 2px solid #cc3300;
+      color: #ffffff;
+      padding: 8px;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 20px;
+      font-size: 14px;
       font-weight: bold;
       transition: all 0.3s;
     }
     
     .mbtn:hover {
-      background: #00ff00;
-      color: #000;
-      box-shadow: 0 0 15px #00ff00;
+      background: #cc3300;
+      color: #ffffff;
+      box-shadow: 0 0 12px #cc3300;
       transform: translateY(-2px);
     }
     
@@ -485,49 +499,51 @@
     
     .audio {
       grid-area: audio;
-      background: rgba(40, 20, 40, 0.95);
+      background: rgba(20, 25, 35, 0.95);
     }
     
     .group {
-      margin: 15px 0;
-      padding: 12px;
-      border: 1px solid #444;
-      border-radius: 10px;
-      background: rgba(0, 0, 0, 0.2);
+      margin: 10px 0;
+      padding: 8px;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.3);
     }
     
     .group h4 {
-      color: #ff6600;
-      margin-bottom: 10px;
+      color: #cc3300;
+      margin-bottom: 6px;
       font-weight: bold;
+      font-size: 12px;
     }
     
     .slider {
       width: 100%;
-      background: #555;
+      background: #2a2a3a;
       -webkit-appearance: none;
-      height: 10px;
-      border-radius: 5px;
+      appearance: none;
+      height: 8px;
+      border-radius: 4px;
       outline: none;
     }
     
     .slider::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
-      width: 20px;
-      height: 20px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
-      background: #ff8c00;
+      background: #cc3300;
       cursor: pointer;
     }
     
     .slider::-moz-range-thumb {
       -moz-appearance: none;
       appearance: none;
-      width: 20px;
-      height: 20px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
-      background: #ff8c00;
+      background: #cc3300;
       cursor: pointer;
       border: none;
     }
@@ -536,7 +552,7 @@
       width: 100%;
       height: 24px;
       background: #000;
-      border: 2px solid #ff8c00;
+      border: 2px solid #cc3300;
       border-radius: 6px;
       margin: 10px 0;
       overflow: hidden;
@@ -557,9 +573,9 @@
     }
     
     .r {
-      background: #555;
-      border: 2px solid #ff8c00;
-      color: #cccccc;
+      background: linear-gradient(145deg, #660033, #990044);
+      border: 2px solid #cc3300;
+      color: #ffffff;
       padding: 8px 16px;
       border-radius: 8px;
       cursor: pointer;
@@ -574,25 +590,28 @@
     }
     
     .r:hover {
-      background: #666;
-      border-color: #ff9911;
+      background: #cc3300;
+      border-color: #cc3300;
+      color: #ffffff;
     }
     
     .r.active {
-      background: #ff8c00;
-      color: #000;
+      background: #cc3300;
+      color: #ffffff;
       font-weight: bold;
     }
     
     .r.active:hover {
-      background: #ff9911;
+      background: #cc3300;
+      color: #ffffff;
     }
     
     .row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 10px;
+      gap: 6px;
+      margin: 4px 0;
     }
     
     .bat {
@@ -606,7 +625,7 @@
       flex: 1;
       height: 18px;
       background: #333;
-      border: 2px solid #ff8c00;
+      border: 2px solid #cc3300;
       border-radius: 10px;
       overflow: hidden;
     }
@@ -617,50 +636,49 @@
       transition: width 0.5s, background 0.5s;
     }
     
-    .sound {
-      grid-area: sound;
-      background: rgba(40, 30, 20, 0.95);
-    }
+    /* Sound panel removed - now integrated into motor panel */
     
     .soundgrid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      gap: 6px;
     }
     
     .sbtn {
-      background: linear-gradient(145deg, #333, #444);
-      border: 2px solid #ff6600;
-      color: #ff6600;
-      padding: 10px;
-      border-radius: 8px;
+      background: linear-gradient(145deg, #660033, #990044);
+      border: 2px solid #cc3300;
+      color: #ffffff;
+      padding: 8px;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       transition: all 0.2s;
     }
     
     .sbtn:hover {
-      background: #ff6600;
-      color: #000;
+      background: #cc3300;
+      color: #ffffff;
       transform: translateY(-1px);
     }
     
     .log {
       grid-area: log;
       background: rgba(0, 0, 0, 0.9);
-      border: 2px solid #808080;
-      border-radius: 10px;
-      padding: 12px;
-      font-size: 12px;
+      border: 2px solid #cc3300;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 10px;
       overflow-y: auto;
-      max-height: 60px;
+      max-height: 50px;
       font-family: 'Courier New', monospace;
       color: #cccccc;
     }
     
     h3 {
-      margin-bottom: 10px;
+      margin-bottom: 4px;
       font-weight: bold;
+      color: #cc3300;
+      font-size: 13px;
     }
     
     @media (max-width: 1000px) {
@@ -669,7 +687,6 @@
           "tts tts"
           "video video"
           "motor audio"
-          "sound sound"
           "log log";
         grid-template-columns: 1fr 1fr;
       }
@@ -682,7 +699,6 @@
           "video"
           "motor"
           "audio"
-          "sound"
           "log";
         grid-template-columns: 1fr;
         padding: 10px;
@@ -695,8 +711,8 @@
 <div class="container">
   <div class="panel tts">
     <div id="recent" class="pills" style="display:none;">
-      <div class="pill" onclick="pick(recentPhrases[0])" id="recent1"></div>
-      <div class="pill" onclick="pick(recentPhrases[1])" id="recent2"></div>
+      <div class="pill" onclick="pickRecentPhrase(0)" id="recent1"></div>
+      <div class="pill" onclick="pickRecentPhrase(1)" id="recent2"></div>
     </div>
     <div id="predictions" class="pills" style="display:none;"></div>
     <div id="diacritics" class="pills" style="display:none;">
@@ -732,17 +748,53 @@
       <div></div>
     </div>
     <div class="row">
-      <span>Speed:</span>
+      <span style="font-size: 11px;">Speed:</span>
       <input id="spd" type="range" class="slider" min="50" max="255" value="150" oninput="document.getElementById('spdv').textContent=this.value" />
-      <span id="spdv" style="min-width:40px;color:#ff6600;font-weight:bold">150</span>
+      <span id="spdv" style="min-width:35px;color:#cc3300;font-weight:bold;font-size: 11px;">150</span>
     </div>
-    <div class="row" style="margin-top: 10px;">
-      <button class="btn" onclick="testMotors()" style="flex:1">Test Motors</button>
+    <div class="row">
+      <button class="btn" onclick="testMotors()" style="flex:1;font-size: 11px;">Test Motors</button>
+    </div>
+    
+    <!-- Separation line -->
+    <div style="height: 1px; background: linear-gradient(90deg, transparent, #cc3300, transparent); margin: 8px 0;"></div>
+    
+    <div class="row" style="margin-top: 8px;">
+      <h4 style="color: #cc3300; font-size: 11px; margin: 0; flex: 1;">Sound Effects</h4>
+      <button class="btn" onclick="toggleSoundRename()" style="font-size: 9px; padding: 4px 8px;">Rename</button>
+    </div>
+    
+    <!-- Sound Effects Grid 1-10 -->
+    <div class="soundgrid" style="margin-top: 4px;">
+      <button class="sbtn" onclick="beep(0)" data-sound-id="0" data-sound-name="Sound 1">1</button>
+      <button class="sbtn" onclick="beep(1)" data-sound-id="1" data-sound-name="Sound 2">2</button>
+      <button class="sbtn" onclick="beep(2)" data-sound-id="2" data-sound-name="Sound 3">3</button>
+      <button class="sbtn" onclick="beep(3)" data-sound-id="3" data-sound-name="Sound 4">4</button>
+      <button class="sbtn" onclick="beep(4)" data-sound-id="4" data-sound-name="Sound 5">5</button>
+      <button class="sbtn" onclick="beep(5)" data-sound-id="5" data-sound-name="Sound 6">6</button>
+      <button class="sbtn" onclick="beep(6)" data-sound-id="6" data-sound-name="Sound 7">7</button>
+      <button class="sbtn" onclick="beep(7)" data-sound-id="7" data-sound-name="Sound 8">8</button>
+      <button class="sbtn" onclick="beep(8)" data-sound-id="8" data-sound-name="Sound 9">9</button>
+      <button class="sbtn" onclick="beep(9)" data-sound-id="9" data-sound-name="Sound 10">10</button>
+    </div>
+    
+    <!-- Sound Effects Grid 11-20 -->
+    <div class="soundgrid" style="margin-top: 4px;">
+      <button class="sbtn" onclick="beep(10)" data-sound-id="10" data-sound-name="Sound 11">11</button>
+      <button class="sbtn" onclick="beep(11)" data-sound-id="11" data-sound-name="Sound 12">12</button>
+      <button class="sbtn" onclick="beep(12)" data-sound-id="12" data-sound-name="Sound 13">13</button>
+      <button class="sbtn" onclick="beep(13)" data-sound-id="13" data-sound-name="Sound 14">14</button>
+      <button class="sbtn" onclick="beep(14)" data-sound-id="14" data-sound-name="Sound 15">15</button>
+      <button class="sbtn" onclick="beep(15)" data-sound-id="15" data-sound-name="Sound 16">16</button>
+      <button class="sbtn" onclick="beep(16)" data-sound-id="16" data-sound-name="Sound 17">17</button>
+      <button class="sbtn" onclick="beep(17)" data-sound-id="17" data-sound-name="Sound 18">18</button>
+      <button class="sbtn" onclick="beep(18)" data-sound-id="18" data-sound-name="Sound 19">19</button>
+      <button class="sbtn" onclick="beep(19)" data-sound-id="19" data-sound-name="Sound 20">20</button>
     </div>
   </div>
 
   <div class="panel video">
-    <video id="vid" width="100%" height="auto" controls style="max-width: 920px; border-radius: 12px; border: 3px solid #ff8c00;">
+    <video id="vid" width="100%" height="auto" controls style="max-width: 920px; border-radius: 10px; border: 3px solid #cc3300;">
       <source id="hls-source" src="" type="application/x-mpegURL">
       Your browser does not support the video tag.
     </video>
@@ -775,10 +827,6 @@
       <div class="info-item">
         <span class="info-label">Data:</span>
         <span id="data-used">0 MB</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Audio:</span>
-        <span id="audio-quality">32kbps (good)</span>
       </div>
       <div class="info-item">
         <span class="info-label">Mic:</span>
@@ -840,30 +888,8 @@
       </div>
     </div>
 
-    <div class="group">
-      <h4>Audio Quality</h4>
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
-        <span style="color:#ff6600;font-size:12px;">Mode:</span>
-        <span style="color:#cccccc;font-size:10px;flex:1">Low Bandwidth (32kbps, 16kHz, Mono)</span>
-      </div>
-    </div>
   </div>
 
-  <div class="panel sound">
-    <h3>Sound Effects</h3>
-    <div class="soundgrid">
-      <button class="sbtn" onclick="beep(0)">1</button>
-      <button class="sbtn" onclick="beep(1)">2</button>
-      <button class="sbtn" onclick="beep(2)">3</button>
-      <button class="sbtn" onclick="beep(3)">4</button>
-      <button class="sbtn" onclick="beep(4)">5</button>
-      <button class="sbtn" onclick="beep(5)">6</button>
-      <button class="sbtn" onclick="beep(6)">7</button>
-      <button class="sbtn" onclick="beep(7)">8</button>
-      <button class="sbtn" onclick="beep(8)">9</button>
-      <button class="sbtn" onclick="beep(9)">10</button>
-    </div>
-  </div>
 
   <div id="log" class="panel log">Avatar Tank System Ready</div>
 </div>
@@ -873,6 +899,107 @@
 let lang = 'en';
 let predictionTimeout = null;
 let recentPhrases = [];
+
+// Enhanced prediction system
+let wordContext = [];
+let sentenceHistory = [];
+let wordFrequency = {};
+let contextPatterns = {};
+let commonWords = {
+  'en': [
+    'hello', 'hi', 'good', 'morning', 'afternoon', 'evening', 'night', 'day', 'time', 'today',
+    'tomorrow', 'yesterday', 'week', 'month', 'year', 'now', 'then', 'here', 'there', 'where',
+    'what', 'when', 'why', 'how', 'who', 'which', 'this', 'that', 'these', 'those',
+    'yes', 'no', 'maybe', 'sure', 'okay', 'fine', 'great', 'excellent', 'wonderful', 'amazing',
+    'please', 'thank', 'thanks', 'welcome', 'sorry', 'excuse', 'pardon', 'help', 'need', 'want',
+    'like', 'love', 'hate', 'enjoy', 'prefer', 'think', 'know', 'understand', 'remember', 'forget',
+    'see', 'look', 'watch', 'listen', 'hear', 'feel', 'touch', 'smell', 'taste', 'try',
+    'work', 'play', 'study', 'learn', 'teach', 'read', 'write', 'speak', 'talk', 'say',
+    'go', 'come', 'walk', 'run', 'drive', 'fly', 'travel', 'visit', 'stay', 'leave',
+    'eat', 'drink', 'cook', 'buy', 'sell', 'pay', 'cost', 'price', 'money', 'dollar',
+    'house', 'home', 'room', 'door', 'window', 'table', 'chair', 'bed', 'kitchen', 'bathroom',
+    'car', 'bus', 'train', 'plane', 'bike', 'phone', 'computer', 'internet', 'email', 'message',
+    'family', 'friend', 'person', 'people', 'man', 'woman', 'child', 'baby', 'parent', 'brother',
+    'sister', 'son', 'daughter', 'husband', 'wife', 'boyfriend', 'girlfriend', 'neighbor', 'colleague',
+    'job', 'office', 'school', 'university', 'hospital', 'store', 'restaurant', 'hotel', 'bank',
+    'weather', 'sunny', 'rainy', 'cloudy', 'windy', 'hot', 'cold', 'warm', 'cool', 'temperature',
+    'food', 'water', 'coffee', 'tea', 'milk', 'bread', 'meat', 'fish', 'fruit', 'vegetable',
+    'color', 'red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'black', 'white',
+    'number', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    'big', 'small', 'large', 'little', 'tall', 'short', 'long', 'wide', 'narrow', 'heavy',
+    'light', 'fast', 'slow', 'quick', 'easy', 'hard', 'difficult', 'simple', 'complex', 'important',
+    'right', 'left', 'up', 'down', 'front', 'back', 'inside', 'outside', 'near', 'far',
+    'first', 'last', 'next', 'previous', 'new', 'old', 'young', 'fresh', 'clean', 'dirty',
+    'happy', 'sad', 'angry', 'excited', 'tired', 'sleepy', 'awake', 'busy', 'free', 'ready',
+    'start', 'begin', 'finish', 'end', 'stop', 'continue', 'pause', 'wait', 'hurry', 'relax',
+    'open', 'close', 'turn', 'move', 'push', 'pull', 'lift', 'drop', 'pick', 'put',
+    'break', 'fix', 'repair', 'build', 'create', 'make', 'do', 'get', 'give', 'take',
+    'send', 'receive', 'call', 'answer', 'ask', 'tell', 'explain', 'describe', 'show', 'hide',
+    'find', 'search', 'look', 'discover', 'invent', 'design', 'plan', 'decide', 'choose', 'select',
+    'change', 'improve', 'develop', 'grow', 'increase', 'decrease', 'rise', 'fall', 'win', 'lose',
+    'succeed', 'fail', 'achieve', 'accomplish', 'complete', 'finish', 'solve', 'fix', 'help', 'support'
+  ],
+  'ro': [
+    'salut', 'bună', 'ziua', 'dimineața', 'după-amiaza', 'seara', 'noaptea', 'zi', 'timp', 'astăzi',
+    'mâine', 'ieri', 'săptămâna', 'luna', 'anul', 'acum', 'atunci', 'aici', 'acolo', 'unde',
+    'ce', 'când', 'de ce', 'cum', 'cine', 'care', 'acest', 'acel', 'acești', 'acei',
+    'da', 'nu', 'poate', 'sigur', 'bine', 'excelent', 'minunat', 'uimitor', 'fantastic',
+    'te rog', 'mulțumesc', 'cu plăcere', 'scuze', 'ajutor', 'am nevoie', 'vreau', 'îmi place',
+    'iubesc', 'urăsc', 'mă bucur', 'prefer', 'cred', 'știu', 'înțeleg', 'îmi amintesc', 'uit',
+    'văd', 'mă uit', 'ascult', 'aud', 'simt', 'ating', 'miros', 'gust', 'încerc',
+    'lucrez', 'mă joc', 'studiez', 'învăț', 'predau', 'citesc', 'scriu', 'vorbesc', 'spun',
+    'merg', 'vin', 'mă plimb', 'alerg', 'conduc', 'zbor', 'călătoresc', 'vizitez', 'stau', 'plec',
+    'mănânc', 'beau', 'gătesc', 'cumpăr', 'vând', 'plătesc', 'costă', 'preț', 'bani', 'leu',
+    'casă', 'cameră', 'ușă', 'fereastră', 'masă', 'scaun', 'pat', 'bucătărie', 'baie',
+    'mașină', 'autobuz', 'tren', 'avion', 'bicicletă', 'telefon', 'computer', 'internet', 'email',
+    'familie', 'prieten', 'persoană', 'oameni', 'bărbat', 'femeie', 'copil', 'bebeluș', 'părinte',
+    'frate', 'soră', 'fiu', 'fiică', 'soț', 'soție', 'prieten', 'prietenă', 'vecin', 'colega',
+    'job', 'birou', 'școală', 'universitate', 'spital', 'magazin', 'restaurant', 'hotel', 'bancă',
+    'vreme', 'însorit', 'ploios', 'înnorat', 'vântos', 'fierbinte', 'rece', 'cald', 'răcoros',
+    'mâncare', 'apă', 'cafea', 'ceai', 'lapte', 'pâine', 'carne', 'pește', 'fruct', 'legumă',
+    'culoare', 'roșu', 'albastru', 'verde', 'galben', 'portocaliu', 'violet', 'roz', 'negru', 'alb',
+    'număr', 'unu', 'doi', 'trei', 'patru', 'cinci', 'șase', 'șapte', 'opt', 'nouă', 'zece',
+    'mare', 'mic', 'lung', 'scurt', 'înalt', 'jos', 'larg', 'îngust', 'greu', 'ușor',
+    'rapid', 'lent', 'ușor', 'greu', 'dificil', 'simplu', 'complex', 'important', 'corect', 'greșit',
+    'dreapta', 'stânga', 'sus', 'jos', 'față', 'spate', 'înăuntru', 'afară', 'aproape', 'departe',
+    'primul', 'ultimul', 'următorul', 'anteriorul', 'nou', 'vechi', 'tânăr', 'proaspăt', 'curat', 'murdar',
+    'fericit', 'trist', 'supărat', 'entuziasmat', 'obosit', 'somnolent', 'treaz', 'ocupat', 'liber', 'gata',
+    'încep', 'termin', 'opresc', 'continui', 'pauză', 'aștept', 'mă grăbesc', 'mă relaxez',
+    'deschid', 'închid', 'întorc', 'mut', 'împing', 'trag', 'ridic', 'las', 'iau', 'pun',
+    'sparg', 'repar', 'construiesc', 'creez', 'fac', 'obțin', 'dau', 'iau', 'trimit', 'primesc',
+    'sun', 'răspund', 'întreb', 'spun', 'explic', 'descriu', 'arat', 'ascund', 'găsesc', 'caut'
+  ],
+  'de': [
+    'hallo', 'hi', 'guten', 'morgen', 'nachmittag', 'abend', 'nacht', 'tag', 'zeit', 'heute',
+    'morgen', 'gestern', 'woche', 'monat', 'jahr', 'jetzt', 'dann', 'hier', 'dort', 'wo',
+    'was', 'wann', 'warum', 'wie', 'wer', 'welche', 'dieser', 'jener', 'diese', 'jene',
+    'ja', 'nein', 'vielleicht', 'sicher', 'okay', 'gut', 'großartig', 'ausgezeichnet', 'wunderbar',
+    'bitte', 'danke', 'gern', 'entschuldigung', 'hilfe', 'brauche', 'will', 'mag', 'liebe',
+    'hasse', 'genieße', 'bevorzuge', 'denke', 'weiß', 'verstehe', 'erinnere', 'vergesse',
+    'sehe', 'schaue', 'höre', 'fühle', 'berühre', 'rieche', 'schmecke', 'versuche',
+    'arbeite', 'spiele', 'lerne', 'lehre', 'lese', 'schreibe', 'spreche', 'sage',
+    'gehe', 'komme', 'laufe', 'renne', 'fahre', 'fliege', 'reise', 'besuche', 'bleibe', 'verlasse',
+    'esse', 'trinke', 'koche', 'kaufe', 'verkaufe', 'bezahle', 'kostet', 'preis', 'geld', 'euro',
+    'haus', 'zimmer', 'tür', 'fenster', 'tisch', 'stuhl', 'bett', 'küche', 'bad',
+    'auto', 'bus', 'zug', 'flugzeug', 'fahrrad', 'telefon', 'computer', 'internet', 'email',
+    'familie', 'freund', 'person', 'menschen', 'mann', 'frau', 'kind', 'baby', 'eltern',
+    'bruder', 'schwester', 'sohn', 'tochter', 'mann', 'frau', 'freund', 'freundin', 'nachbar',
+    'arbeit', 'büro', 'schule', 'universität', 'krankenhaus', 'geschäft', 'restaurant', 'hotel', 'bank',
+    'wetter', 'sonnig', 'regnerisch', 'bewölkt', 'windig', 'heiß', 'kalt', 'warm', 'kühl',
+    'essen', 'wasser', 'kaffee', 'tee', 'milch', 'brot', 'fleisch', 'fisch', 'obst', 'gemüse',
+    'farbe', 'rot', 'blau', 'grün', 'gelb', 'orange', 'lila', 'rosa', 'schwarz', 'weiß',
+    'zahl', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn',
+    'groß', 'klein', 'lang', 'kurz', 'hoch', 'niedrig', 'breit', 'schmal', 'schwer', 'leicht',
+    'schnell', 'langsam', 'einfach', 'schwer', 'schwierig', 'komplex', 'wichtig', 'richtig', 'falsch',
+    'rechts', 'links', 'oben', 'unten', 'vorne', 'hinten', 'innen', 'außen', 'nah', 'weit',
+    'erste', 'letzte', 'nächste', 'vorherige', 'neu', 'alt', 'jung', 'frisch', 'sauber', 'schmutzig',
+    'glücklich', 'traurig', 'wütend', 'aufgeregt', 'müde', 'schläfrig', 'wach', 'beschäftigt', 'frei', 'bereit',
+    'starte', 'beginne', 'beende', 'stoppe', 'setze fort', 'warte', 'beeile', 'entspanne',
+    'öffne', 'schließe', 'drehe', 'bewege', 'schiebe', 'ziehe', 'hebe', 'lasse', 'nehme', 'lege',
+    'breche', 'repariere', 'baue', 'erschaffe', 'mache', 'bekomme', 'gebe', 'nehme', 'sende', 'erhalte',
+    'rufe', 'antworte', 'frage', 'sage', 'erkläre', 'beschreibe', 'zeige', 'verstecke', 'finde', 'suche'
+  ]
+};
 let startTime = Date.now();
 let frameCount = 0;
 let lastFrameTime = Date.now();
@@ -1045,9 +1172,7 @@ let lastNetworkBytes = { wlan0: 0, zt2lrsngy5: 0 };
 let bandwidthHistory = [];
 let realBandwidthKBps = 0;
 
-// Audio quality monitoring
-let audioQualityStatus = 'unknown';
-let audioBitrate = 32;
+// Audio quality monitoring removed - no longer needed
 
 // VU Meter variables
 let vuAnalyser = null;
@@ -1529,36 +1654,7 @@ window.debugVUMeter = debugVUMeter;
 window.quickVUTest = quickVUTest;
 window.restartVUMeter = restartVUMeter;
 
-async function updateAudioQuality() {
-  try {
-    const response = await fetch('/api/audio/quality');
-    if (response.ok) {
-      const data = await response.json();
-      audioQualityStatus = data.quality_status;
-      audioBitrate = data.current_bitrate;
-      
-      // Update audio quality indicator
-      const audioQualityEl = sid('audio-quality');
-      if (audioQualityEl) {
-        audioQualityEl.textContent = `${audioBitrate}kbps (${audioQualityStatus})`;
-        
-        // Color coding
-        if (audioQualityStatus === 'good') {
-          audioQualityEl.style.color = '#0f0'; // Green
-        } else if (audioQualityStatus === 'degraded') {
-          audioQualityEl.style.color = '#ff0'; // Yellow
-        } else {
-          audioQualityEl.style.color = '#f00'; // Red
-        }
-      }
-    }
-  } catch (error) {
-    console.log('Audio quality monitoring error:', error);
-  }
-}
-
-// Update audio quality every 10 seconds
-setInterval(updateAudioQuality, 10000);
+// Audio quality monitoring removed - no longer needed
 
 async function updateBandwidth() {
   const vid = sid('vid');
@@ -1686,6 +1782,7 @@ function clearText() {
 }
 
 function pick(t) {
+  console.log('[Pick] Selected word:', t);
   const input = sid('tts');
   if (input) {
     const words = input.value.trim().split(/\s+/);
@@ -1697,12 +1794,248 @@ function pick(t) {
     }
     input.value += ' ';
     input.focus();
+    
+    console.log('[Pick] Updated input value:', input.value);
+    
+    // Hide current predictions
     const predictions = sid('predictions');
     if (predictions) predictions.style.display = 'none';
     
     // Learn the picked word
     learnWords([t]);
+    
+    // Auto-predict next word after a short delay
+    setTimeout(() => {
+      console.log('[Pick] Triggering next word prediction after delay');
+      // Update context with the new word
+      updateWordContext(input.value);
+      
+      // Trigger prediction for next word (empty query to get context-based suggestions)
+      predictNextWord();
+    }, 100);
   }
+}
+
+// Function to predict the next word based on current context
+function predictNextWord() {
+  const input = sid('tts');
+  if (!input) return;
+  
+  const currentText = input.value; // Don't trim - we need to check for trailing space
+  const words = currentText.trim().split(/\s+/);
+  const lastWord = words[words.length - 1];
+  
+  console.log('[PredictNextWord] Current text:', currentText, 'Ends with space:', currentText.endsWith(' '));
+  
+  // Only show suggestions if the text ends with a space (indicating word completion)
+  if (!currentText.endsWith(' ')) {
+    console.log('[PredictNextWord] Text does not end with space, skipping');
+    return;
+  }
+  
+  // Get suggestions for the next word based on context
+  const contextualSuggestions = getContextualSuggestions('', wordContext);
+  
+  // Also get common words that often start sentences or follow other words
+  const commonSuggestions = getCommonNextWords(lastWord);
+  
+  // Combine suggestions
+  const allSuggestions = [...new Set([...contextualSuggestions, ...commonSuggestions])];
+  
+  console.log('[PredictNextWord] Found suggestions:', allSuggestions.length, allSuggestions.slice(0, 3));
+  
+  if (allSuggestions.length > 0) {
+    const predictions = sid('predictions');
+    if (predictions) {
+      predictions.innerHTML = '';
+      
+      // Sort by relevance (frequency and context)
+      const sortedSuggestions = allSuggestions.sort((a, b) => {
+        const aFreq = wordFrequency[a] || 0;
+        const bFreq = wordFrequency[b] || 0;
+        return bFreq - aFreq;
+      });
+      
+      sortedSuggestions.slice(0, 6).forEach(item => {
+        const pill = document.createElement('div');
+        pill.className = 'pill';
+        pill.textContent = item;
+        pill.style.borderColor = '#cc3300';
+        pill.title = 'Next word suggestion';
+        
+        pill.onclick = () => {
+          pick(item);
+        };
+        pill.oncontextmenu = (e) => {
+          e.preventDefault();
+          playWord(item);
+        };
+        predictions.appendChild(pill);
+      });
+      predictions.style.display = 'flex';
+      console.log('[PredictNextWord] Displayed', sortedSuggestions.slice(0, 6).length, 'suggestions');
+    }
+  } else {
+    console.log('[PredictNextWord] No suggestions found');
+  }
+}
+
+// Function to get common words that often follow a given word
+function getCommonNextWords(lastWord) {
+  const suggestions = new Set();
+  const currentLang = lang;
+  
+  // Common word pairs in different languages
+  const commonPairs = {
+    'en': {
+      'hello': ['how', 'there', 'everyone', 'world'],
+      'good': ['morning', 'evening', 'night', 'day', 'luck', 'job'],
+      'how': ['are', 'do', 'much', 'many', 'long', 'far'],
+      'what': ['is', 'are', 'do', 'time', 'about', 'happened'],
+      'where': ['are', 'is', 'do', 'can', 'did'],
+      'when': ['is', 'are', 'do', 'can', 'will'],
+      'why': ['do', 'are', 'is', 'not', 'so'],
+      'i': ['am', 'want', 'need', 'like', 'think', 'know', 'have', 'will', 'can'],
+      'you': ['are', 'can', 'will', 'should', 'have', 'want', 'need'],
+      'we': ['are', 'can', 'will', 'should', 'have', 'need', 'want'],
+      'they': ['are', 'can', 'will', 'have', 'want', 'need'],
+      'the': ['car', 'house', 'book', 'computer', 'phone', 'time', 'day', 'way'],
+      'a': ['car', 'house', 'book', 'computer', 'phone', 'good', 'bad', 'big', 'small'],
+      'to': ['go', 'see', 'do', 'be', 'have', 'get', 'make', 'take', 'give'],
+      'and': ['the', 'i', 'you', 'we', 'they', 'then', 'so'],
+      'but': ['i', 'you', 'we', 'they', 'the', 'it', 'not'],
+      'or': ['not', 'maybe', 'perhaps', 'the', 'a'],
+      'so': ['i', 'you', 'we', 'they', 'the', 'much', 'many'],
+      'very': ['good', 'bad', 'nice', 'big', 'small', 'fast', 'slow'],
+      'really': ['good', 'bad', 'nice', 'big', 'small', 'fast', 'slow'],
+      'quite': ['good', 'bad', 'nice', 'big', 'small', 'fast', 'slow']
+    },
+    'ro': {
+      'salut': ['cum', 'ce', 'unde', 'când'],
+      'bună': ['ziua', 'dimineața', 'seara', 'noaptea'],
+      'cum': ['ești', 'este', 'sunt', 'mergi', 'te simți'],
+      'ce': ['faci', 'este', 'sunt', 'vrei', 'ai'],
+      'unde': ['ești', 'este', 'mergi', 'te duci'],
+      'când': ['vine', 'pleci', 'ești', 'poți'],
+      'eu': ['sunt', 'am', 'vreau', 'pot', 'trebuie'],
+      'tu': ['ești', 'ai', 'vrei', 'poți', 'trebuie'],
+      'noi': ['suntem', 'avem', 'vrem', 'putem', 'trebuie'],
+      'ei': ['sunt', 'au', 'vor', 'pot', 'trebuie'],
+      'și': ['eu', 'tu', 'noi', 'ei', 'apoi', 'deci'],
+      'dar': ['eu', 'tu', 'noi', 'ei', 'nu', 'totuși'],
+      'sau': ['nu', 'poate', 'probabil', 'eu', 'tu'],
+      'foarte': ['bun', 'rău', 'frumos', 'mare', 'mic'],
+      'chiar': ['bun', 'rău', 'frumos', 'mare', 'mic']
+    },
+    'de': {
+      'hallo': ['wie', 'was', 'wo', 'wann'],
+      'guten': ['morgen', 'tag', 'abend', 'nacht'],
+      'wie': ['geht', 'ist', 'sind', 'heißt'],
+      'was': ['ist', 'sind', 'machst', 'willst'],
+      'wo': ['ist', 'sind', 'gehst', 'wohnst'],
+      'wann': ['kommst', 'gehst', 'ist', 'kannst'],
+      'ich': ['bin', 'habe', 'will', 'kann', 'muss'],
+      'du': ['bist', 'hast', 'willst', 'kannst', 'musst'],
+      'wir': ['sind', 'haben', 'wollen', 'können', 'müssen'],
+      'sie': ['sind', 'haben', 'wollen', 'können', 'müssen'],
+      'und': ['ich', 'du', 'wir', 'sie', 'dann', 'so'],
+      'aber': ['ich', 'du', 'wir', 'sie', 'nicht', 'trotzdem'],
+      'oder': ['nicht', 'vielleicht', 'möglicherweise'],
+      'sehr': ['gut', 'schlecht', 'schön', 'groß', 'klein'],
+      'wirklich': ['gut', 'schlecht', 'schön', 'groß', 'klein']
+    }
+  };
+  
+  if (commonPairs[currentLang] && commonPairs[currentLang][lastWord.toLowerCase()]) {
+    commonPairs[currentLang][lastWord.toLowerCase()].forEach(word => {
+      suggestions.add(word);
+    });
+  }
+  
+  return Array.from(suggestions);
+}
+
+// Function to handle recent phrase selection
+function pickRecentPhrase(index) {
+  if (recentPhrases[index]) {
+    const input = sid('tts');
+    if (input) {
+      // Replace current text with the recent phrase
+      input.value = recentPhrases[index];
+      input.focus();
+      
+      // Hide predictions
+      const predictions = sid('predictions');
+      if (predictions) predictions.style.display = 'none';
+      
+      // Learn the phrase
+      learnWordsFromText(recentPhrases[index]);
+      
+      // Auto-predict next word after the phrase
+      setTimeout(() => {
+        updateWordContext(input.value);
+        predictNextWord();
+      }, 100);
+    }
+  }
+}
+
+// Enhanced context-aware prediction system
+function updateWordContext(text) {
+  const words = text.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+  wordContext = words.slice(-3); // Keep last 3 words for context
+  
+  // Update word frequency
+  words.forEach(word => {
+    if (word.length > 2) {
+      wordFrequency[word] = (wordFrequency[word] || 0) + 1;
+    }
+  });
+  
+  // Update context patterns (word pairs)
+  for (let i = 0; i < words.length - 1; i++) {
+    const pair = words[i] + ' ' + words[i + 1];
+    contextPatterns[pair] = (contextPatterns[pair] || 0) + 1;
+  }
+}
+
+function getContextualSuggestions(currentWord, context) {
+  const suggestions = new Set();
+  const currentLang = lang;
+  
+  // 1. Server-based predictions (existing system)
+  // This will be handled in the main predictText function
+  
+  // 2. Context-based suggestions from patterns
+  if (context.length > 0) {
+    const lastWord = context[context.length - 1];
+    Object.keys(contextPatterns).forEach(pattern => {
+      if (pattern.startsWith(lastWord + ' ')) {
+        const nextWord = pattern.split(' ')[1];
+        if (currentWord === '' || nextWord.startsWith(currentWord.toLowerCase())) {
+          suggestions.add(nextWord);
+        }
+      }
+    });
+  }
+  
+  // 3. Common words that start with current input (or all common words if empty)
+  if (commonWords[currentLang]) {
+    commonWords[currentLang].forEach(word => {
+      if (currentWord === '' || (word.startsWith(currentWord.toLowerCase()) && word !== currentWord.toLowerCase())) {
+        suggestions.add(word);
+      }
+    });
+  }
+  
+  // 4. Frequency-based suggestions
+  Object.keys(wordFrequency).forEach(word => {
+    if (currentWord === '' || (word.startsWith(currentWord.toLowerCase()) && word !== currentWord.toLowerCase())) {
+      suggestions.add(word);
+    }
+  });
+  
+  return Array.from(suggestions).slice(0, 8); // Limit to 8 suggestions
 }
 
 async function predictText(query) {
@@ -1717,18 +2050,58 @@ async function predictText(query) {
   predictionTimeout = setTimeout(async () => {
     try {
       const currentLang = lang;
+      const input = sid('tts');
+      const fullText = input ? input.value : '';
+      
+      // Update context from current text
+      updateWordContext(fullText);
+      
+      // Get contextual suggestions
+      const contextualSuggestions = getContextualSuggestions(query, wordContext);
+      
+      // Get server-based predictions
+      let serverSuggestions = [];
+      try {
       const response = await fetch('/predict?q=' + encodeURIComponent(query) + '&limit=5&lang=' + currentLang);
       const data = await response.json();
+        if (data.ok && data.items) {
+          serverSuggestions = data.items;
+        }
+      } catch (e) {
+        console.log('Server prediction error:', e);
+      }
       
-      if (data.ok && data.items && data.items.length > 0 && predictions) {
+      // Combine and deduplicate suggestions
+      const allSuggestions = [...new Set([...serverSuggestions, ...contextualSuggestions])];
+      
+      if (allSuggestions.length > 0 && predictions) {
         predictions.innerHTML = '';
-        data.items.forEach(item => {
+        
+        // Sort by relevance (server suggestions first, then by frequency)
+        const sortedSuggestions = allSuggestions.sort((a, b) => {
+          const aIsServer = serverSuggestions.includes(a);
+          const bIsServer = serverSuggestions.includes(b);
+          if (aIsServer && !bIsServer) return -1;
+          if (!aIsServer && bIsServer) return 1;
+          
+          const aFreq = wordFrequency[a] || 0;
+          const bFreq = wordFrequency[b] || 0;
+          return bFreq - aFreq;
+        });
+        
+        sortedSuggestions.slice(0, 6).forEach(item => {
           const pill = document.createElement('div');
           pill.className = 'pill';
           pill.textContent = item;
+          
+          // Add visual indicator for context-based suggestions
+          if (!serverSuggestions.includes(item)) {
+            pill.style.borderColor = '#cc3300';
+            pill.title = 'Context-based suggestion';
+          }
+          
           pill.onclick = () => {
-            pick(item);
-            predictions.style.display = 'none';
+            pick(item); // This will now auto-predict next word
           };
           pill.oncontextmenu = (e) => {
             e.preventDefault();
@@ -1743,7 +2116,7 @@ async function predictText(query) {
     } catch (e) {
       if (predictions) predictions.style.display = 'none';
     }
-  }, 100); // Reduced timeout for more responsive predictions
+  }, 150); // Slightly longer timeout for more complex processing
 }
 
 function handleTTSKeydown(event) {
@@ -1754,6 +2127,27 @@ function handleTTSKeydown(event) {
   if (event.key === 'Escape') {
     const predictions = sid('predictions');
     if (predictions) predictions.style.display = 'none';
+  }
+  if (event.key === ' ') {
+    // Spacebar pressed - trigger next word prediction after space is added
+    setTimeout(() => {
+      const input = event.target;
+      const currentText = input.value; // Don't trim - we need to check for trailing space
+      
+      console.log('[Spacebar] Current text:', currentText, 'Ends with space:', currentText.endsWith(' '));
+      
+      // Only predict if there's text and the last character is a space
+      if (currentText.length > 0 && currentText.endsWith(' ')) {
+        console.log('[Spacebar] Triggering next word prediction');
+        // Update context with the current text
+        updateWordContext(currentText);
+        
+        // Trigger next word prediction
+        predictNextWord();
+      } else {
+        console.log('[Spacebar] Not triggering prediction - no text or no trailing space');
+      }
+    }, 10); // Small delay to ensure space is added first
   }
 }
 
@@ -1806,15 +2200,17 @@ async function playWord(word) {
   }
 }
 
-// Speech functions
+// Enhanced speech functions with sentence learning
 async function speak() {
   const textEl = sid('tts');
   if (!textEl) return;
   const text = textEl.value.trim();
   if (!text) return;
   
-  // Learn words from the text
+  // Learn words and patterns from the text
   await learnWordsFromText(text);
+  updateSentenceHistory(text);
+  updateRecentPhrases(text);
   
   log('Speaking...');
   try {
@@ -1832,6 +2228,121 @@ async function speak() {
     }
   } catch (e) {
     log('Speak error: ' + e.message);
+  }
+}
+
+function updateSentenceHistory(text) {
+  // Add to sentence history
+  sentenceHistory.unshift(text);
+  
+  // Keep only last 50 sentences
+  if (sentenceHistory.length > 50) {
+    sentenceHistory = sentenceHistory.slice(0, 50);
+  }
+  
+  // Learn sentence patterns
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  sentences.forEach(sentence => {
+    const words = sentence.toLowerCase().trim().split(/\s+/).filter(w => w.length > 0);
+    
+    // Learn word sequences (trigrams)
+    for (let i = 0; i < words.length - 2; i++) {
+      const trigram = words[i] + ' ' + words[i + 1] + ' ' + words[i + 2];
+      contextPatterns[trigram] = (contextPatterns[trigram] || 0) + 1;
+    }
+  });
+  
+  // Save to localStorage
+  try {
+    localStorage.setItem('avatarSentenceHistory', JSON.stringify(sentenceHistory));
+    localStorage.setItem('avatarContextPatterns', JSON.stringify(contextPatterns));
+    localStorage.setItem('avatarWordFrequency', JSON.stringify(wordFrequency));
+  } catch (e) {
+    console.log('Error saving prediction data:', e);
+  }
+}
+
+function updateRecentPhrases(text) {
+  // Add to recent phrases
+  if (!recentPhrases.includes(text)) {
+    recentPhrases.unshift(text);
+    
+    // Keep only last 10 phrases
+    if (recentPhrases.length > 10) {
+      recentPhrases = recentPhrases.slice(0, 10);
+    }
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem('avatarRecentPhrases', JSON.stringify(recentPhrases));
+    } catch (e) {
+      console.log('Error saving recent phrases:', e);
+    }
+    
+    // Update UI
+    updateRecentPhrasesUI();
+  }
+}
+
+function updateRecentPhrasesUI() {
+  const recentEl = sid('recent');
+  const recent1El = sid('recent1');
+  const recent2El = sid('recent2');
+  
+  if (recentEl && recent1El && recent2El) {
+    if (recentPhrases.length > 0) {
+      recent1El.textContent = recentPhrases[0];
+      recent1El.style.display = 'block';
+    } else {
+      recent1El.style.display = 'none';
+    }
+    
+    if (recentPhrases.length > 1) {
+      recent2El.textContent = recentPhrases[1];
+      recent2El.style.display = 'block';
+    } else {
+      recent2El.style.display = 'none';
+    }
+    
+    recentEl.style.display = (recentPhrases.length > 0) ? 'flex' : 'none';
+  }
+}
+
+function loadPredictionData() {
+  try {
+    // Load sentence history
+    const savedHistory = localStorage.getItem('avatarSentenceHistory');
+    if (savedHistory) {
+      sentenceHistory = JSON.parse(savedHistory);
+    }
+    
+    // Load context patterns
+    const savedPatterns = localStorage.getItem('avatarContextPatterns');
+    if (savedPatterns) {
+      contextPatterns = JSON.parse(savedPatterns);
+    }
+    
+    // Load word frequency
+    const savedFrequency = localStorage.getItem('avatarWordFrequency');
+    if (savedFrequency) {
+      wordFrequency = JSON.parse(savedFrequency);
+    }
+    
+    // Load recent phrases
+    const savedPhrases = localStorage.getItem('avatarRecentPhrases');
+    if (savedPhrases) {
+      recentPhrases = JSON.parse(savedPhrases);
+      updateRecentPhrasesUI();
+    }
+    
+    console.log('Prediction data loaded:', {
+      sentences: sentenceHistory.length,
+      patterns: Object.keys(contextPatterns).length,
+      words: Object.keys(wordFrequency).length,
+      recent: recentPhrases.length
+    });
+  } catch (e) {
+    console.log('Error loading prediction data:', e);
   }
 }
 
@@ -2360,7 +2871,7 @@ async function refreshStream() {
         });
       }, 3000);
       
-    } else {
+  } else {
       log('Stream refresh failed: ' + result.message);
       console.error('[Refresh] Backend refresh failed:', result);
     }
@@ -3007,6 +3518,110 @@ async function beep(soundId) {
     log(result.ok ? result.msg : ('Sound error: ' + result.msg));
   } catch (e) {
     log('Beep error: ' + e.message);
+  }
+}
+
+// Sound renaming functionality
+let soundRenameMode = false;
+let soundNames = {};
+
+// Load sound names from localStorage on startup
+function loadSoundNames() {
+  try {
+    const saved = localStorage.getItem('avatarSoundNames');
+    if (saved) {
+      soundNames = JSON.parse(saved);
+      updateSoundButtonLabels();
+    }
+  } catch (e) {
+    console.log('Error loading sound names:', e);
+  }
+}
+
+// Save sound names to localStorage
+function saveSoundNames() {
+  try {
+    localStorage.setItem('avatarSoundNames', JSON.stringify(soundNames));
+  } catch (e) {
+    console.log('Error saving sound names:', e);
+  }
+}
+
+// Update all sound button labels
+function updateSoundButtonLabels() {
+  for (let i = 0; i < 20; i++) {
+    const button = document.querySelector(`[data-sound-id="${i}"]`);
+    if (button) {
+      const customName = soundNames[i];
+      if (customName) {
+        button.textContent = customName;
+        button.title = `Sound ${i + 1}: ${customName}`;
+      } else {
+        button.textContent = i + 1;
+        button.title = `Sound ${i + 1}`;
+      }
+    }
+  }
+}
+
+// Toggle rename mode
+function toggleSoundRename() {
+  soundRenameMode = !soundRenameMode;
+  const renameBtn = document.querySelector('[onclick="toggleSoundRename()"]');
+  
+  if (soundRenameMode) {
+    renameBtn.textContent = 'Done';
+    renameBtn.style.background = '#cc3300';
+    renameBtn.style.color = '#000';
+    
+    // Add click handlers for renaming
+    for (let i = 0; i < 20; i++) {
+      const button = document.querySelector(`[data-sound-id="${i}"]`);
+      if (button) {
+        button.onclick = () => renameSound(i);
+        button.style.cursor = 'pointer';
+        button.title = 'Click to rename this sound';
+      }
+    }
+    
+    log('Rename mode: Click any sound button to rename it');
+  } else {
+    renameBtn.textContent = 'Rename';
+    renameBtn.style.background = '';
+    renameBtn.style.color = '';
+    
+    // Restore original click handlers
+    for (let i = 0; i < 20; i++) {
+      const button = document.querySelector(`[data-sound-id="${i}"]`);
+      if (button) {
+        button.onclick = () => beep(i);
+        button.style.cursor = '';
+        button.title = '';
+      }
+    }
+    
+    log('Rename mode disabled');
+  }
+}
+
+// Rename a specific sound
+function renameSound(soundId) {
+  const currentName = soundNames[soundId] || `Sound ${soundId + 1}`;
+  const newName = prompt(`Rename sound ${soundId + 1}:`, currentName);
+  
+  if (newName !== null) {
+    if (newName.trim() === '') {
+      // Remove custom name (reset to default)
+      delete soundNames[soundId];
+      log(`Sound ${soundId + 1} reset to default name`);
+    } else {
+      // Set custom name
+      soundNames[soundId] = newName.trim();
+      log(`Sound ${soundId + 1} renamed to: ${newName.trim()}`);
+    }
+    
+    saveSoundNames();
+    updateSoundButtonLabels();
   }
 }
 
@@ -3752,7 +4367,13 @@ async function init() {
   updateBattery();
   setInterval(updateBattery, 60000); // Update battery every minute
   
-  // Audio quality monitoring handled by updateAudioQuality() function
+  // Load sound names from localStorage
+  loadSoundNames();
+  
+  // Load prediction data from localStorage
+  loadPredictionData();
+  
+  // Audio quality monitoring removed - no longer needed
   
   // VU meter will be initialized after WebRTC stream is connected
   
