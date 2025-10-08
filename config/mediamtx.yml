@@ -1,0 +1,56 @@
+# MediaMTX configuration for Avatar Tank
+# This configuration enables WebRTC streaming only (HLS, RTSP, RTMP disabled)
+
+# General settings
+logLevel: info
+logDestinations: [stdout]
+logFile: ""
+
+# API settings
+api: yes
+apiAddress: ":9997"
+
+# RTSP settings - ENABLED (for camera input to WebRTC)
+rtsp: yes
+rtspAddress: ":8554"
+
+# RTMP settings - DISABLED (WebRTC only)
+rtmp: no
+rtmpAddress: ":1935"
+
+# HLS settings - ENABLED (for live feed compatibility)
+hls: yes
+hlsAddress: "0.0.0.0:8888"
+hlsAlwaysRemux: no
+hlsVariant: "lowLatency"
+hlsSegmentCount: 7
+hlsSegmentDuration: "1s"
+hlsPartDuration: "200ms"
+hlsSegmentMaxSize: "50M"
+
+# WebRTC settings
+webrtc: yes
+webrtcAddress: "0.0.0.0:8889"
+webrtcAllowOrigin: "*"
+webrtcICEServers2:
+  - url: "stun:stun.l.google.com:19302"
+
+# SRT settings
+srt: no
+
+# Paths settings
+paths:
+  stream:
+    source: publisher
+    sourceProtocol: automatic
+    sourceAnyPortEnable: yes
+    sourceRedirect: ""
+    overridePublisher: no
+    fallback: ""
+    
+    # Recording settings
+    record: no
+    recordPath: "./recordings/%path/%Y-%m-%d_%H-%M-%S-%f"
+    recordFormat: "mpegts"
+    recordPartDuration: "1h"
+    recordDeleteAfter: "24h"

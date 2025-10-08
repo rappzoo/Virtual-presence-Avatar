@@ -1,0 +1,3821 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Avatar Tank - Control Interface</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediamtx/webrtc@latest/dist/webrtc.js"></script>
+  <script>
+    // Native WebRTC Player Implementation
+    window.WebRTCPlayer = class {
+      constructor(options) {
+        this.video = options.video;
+        this.url = options.url;
+        this.webrtc = options.webrtc;
+        this.listeners = {};
+        this.pc = null;
+        this.stream = null;
+        this.init();
+      }
+      
+      init() {
+        console.log('Initializing native WebRTC player for:', this.url);
+        this.setupWebRTC();
+      }
+      
+      async setupWebRTC() {
+        try {
+          // Create RTCPeerConnection with optimized audio settings
+          const config = {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' }
+            ],
+            // Audio optimization settings
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              sampleRate: 48000,  // Standard WebRTC sample rate
+              channelCount: 2,    // Stereo
+              latency: 0.1        // Low latency
+            },
+            // WebRTC optimization for faster negotiation
+            rtcpMuxPolicy: 'require',  // Force RTCP muxing for faster negotiation
+            bundlePolicy: 'max-bundle',  // Bundle all media streams
+            iceCandidatePoolSize: 0  // Disable candidate pooling for faster connection
+          };
+          
+          this.pc = new RTCPeerConnection(config);
+          
+          // Handle incoming stream with audio optimization
+          this.pc.ontrack = (event) => {
+            console.log('WebRTC track received:', event.track.kind);
+            if (event.streams && event.streams[0]) {
+              this.stream = event.streams[0];
+              // Store stream globally for VU meter access
+              window.webrtcStream = this.stream;
+              
+              // Optimize audio tracks
+              const audioTracks = this.stream.getAudioTracks();
+              audioTracks.forEach(track => {
+                console.log('Audio track settings:', track.getSettings());
+                // Apply audio constraints for low bandwidth mode
+                track.applyConstraints({
+                  sampleRate: 16000,
+                  channelCount: 1
+                  // Audio processing removed for maximum reliability
+                }).catch(e => console.log('Audio constraints not supported:', e));
+              });
+              
+              // Set video element properties for better audio handling
+              this.video.preload = 'auto';
+              this.video.muted = false;
+              this.video.volume = 0.8;
+              
+              // Audio processing removed for maximum reliability
+              
+              this.video.srcObject = this.stream;
+              this.emit('play');
+            }
+          };
+          
+          // Handle ICE candidates
+          this.pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              console.log('ICE candidate:', event.candidate);
+            }
+          };
+          
+          // Handle connection state changes
+          this.pc.onconnectionstatechange = () => {
+            console.log('WebRTC connection state:', this.pc.connectionState);
+            if (this.pc.connectionState === 'connected') {
+              this.emit('play');
+            } else if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
+              this.emit('disconnect');
+            }
+          };
+          
+          // Handle ICE connection state changes
+          this.pc.oniceconnectionstatechange = () => {
+            console.log('ICE connection state:', this.pc.iceConnectionState);
+          };
+          
+          // Start WebRTC negotiation
+          await this.startWebRTCNegotiation();
+          
+        } catch (error) {
+          console.error('WebRTC setup failed:', error);
+          this.emit('error', error);
+        }
+      }
+      
+      async startWebRTCNegotiation() {
+        try {
+          // Create offer with audio codec preferences
+          const offer = await this.pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+          });
+          
+          // Use original SDP without modification to avoid syntax errors
+          debugLog('Using original SDP for WebRTC negotiation', 'info');
+          
+          await this.pc.setLocalDescription(offer);
+          
+          // Use WHEP (WebRTC-HTTP Egress Protocol) for receiving streams
+          const response = await fetch(this.url + '/whep', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/sdp',
+            },
+            body: offer.sdp
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            debugLog(`WebRTC negotiation failed: ${response.status} - ${errorText}`, 'error');
+            throw new Error(`WebRTC negotiation failed: ${response.status} - ${errorText}`);
+          }
+          
+          const answerSdp = await response.text();
+          
+          // Validate SDP answer
+          if (!answerSdp || answerSdp.trim().length === 0) {
+            debugLog('Empty SDP answer received', 'error');
+            throw new Error('Empty SDP answer received');
+          }
+          
+          await this.pc.setRemoteDescription(new RTCSessionDescription({
+            type: 'answer',
+            sdp: answerSdp
+          }));
+          
+          console.log('WebRTC negotiation completed via WHEP with audio optimization');
+          debugLog('WebRTC negotiation completed successfully', 'success');
+          
+        } catch (error) {
+          console.error('WebRTC negotiation failed:', error);
+          this.emit('error', error);
+        }
+      }
+      
+      on(event, callback) {
+        if (!this.listeners[event]) {
+          this.listeners[event] = [];
+        }
+        this.listeners[event].push(callback);
+      }
+      
+      emit(event, data) {
+        if (this.listeners[event]) {
+          this.listeners[event].forEach(callback => callback(data));
+        }
+      }
+      
+      destroy() {
+        if (this.pc) {
+          this.pc.close();
+          this.pc = null;
+        }
+        if (this.stream) {
+          this.stream.getTracks().forEach(track => track.stop());
+          this.stream = null;
+        }
+        if (this.video) {
+          this.video.srcObject = null;
+        }
+      }
+    };
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: 'Orbitron', 'Courier New', monospace;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%);
+      color: #cccccc;
+      min-height: 100vh;
+      overflow-x: auto;
+      background-attachment: fixed;
+    }
+    
+    .container {
+      display: grid;
+      grid-template-areas:
+        "tts tts tts"
+        "motor video audio"
+        "sound video audio"
+        "log log log";
+      grid-template-columns: 280px 1fr 340px;
+      grid-template-rows: 80px 1fr auto 70px;
+      gap: 15px;
+      padding: 15px;
+      min-height: 100vh;
+    }
+    
+    .panel {
+      background: rgba(45, 45, 45, 0.95);
+      border: 2px solid #ff8c00;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 0 20px rgba(255, 140, 0, 0.2);
+      backdrop-filter: blur(3px);
+    }
+    
+    .tts {
+      grid-area: tts;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(20, 20, 50, 0.95);
+    }
+    
+    .tts input {
+      flex: 1;
+      background: rgba(20, 20, 20, 0.8);
+      border: 2px solid #ff8c00;
+      color: #cccccc;
+      padding: 12px;
+      border-radius: 10px;
+      font: inherit;
+      transition: box-shadow 0.3s;
+    }
+    
+    .tts input:focus {
+      box-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
+      outline: none;
+    }
+    
+    .pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    
+    .pill {
+      background: linear-gradient(145deg, #555, #666);
+      border: 1px solid #ff8c00;
+      color: #cccccc;
+      padding: 6px 12px;
+      border-radius: 18px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.2s;
+    }
+    
+    .pill:hover {
+      background: #ff8c00;
+      color: #000;
+      transform: translateY(-1px);
+    }
+    
+    .diacritic-pill {
+      background: #444;
+      color: #ff8c00;
+      font-weight: bold;
+      font-size: 16px;
+      min-width: 32px;
+      text-align: center;
+    }
+    
+    .btn {
+      background: linear-gradient(145deg, #4a4a4a, #2a2a2a);
+      border: 2px solid #ff8c00;
+      color: #cccccc;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font: inherit;
+      transition: all 0.3s;
+    }
+    
+    .btn:hover {
+      background: #ff8c00;
+      color: #000;
+      box-shadow: 0 0 15px #ff8c00;
+      transform: translateY(-2px);
+    }
+    
+    .btn-orange {
+      border-color: #ff6600;
+      color: #ff6600;
+      font-weight: bold;
+    }
+    
+    .btn-orange:hover {
+      background: #ff6600;
+      color: #000;
+    }
+    
+    .lang {
+      display: flex;
+      border: 2px solid #ff8c00;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    
+    .lang button {
+      background: #555;
+      border: none;
+      color: #cccccc;
+      padding: 10px 14px;
+      cursor: pointer;
+      flex: 1;
+      transition: all 0.2s;
+    }
+    
+    .lang .active {
+      background: #ff8c00;
+      color: #000;
+      font-weight: bold;
+    }
+    
+    .video {
+      grid-area: video;
+      text-align: center;
+      background: rgba(30, 30, 30, 0.95);
+    }
+    
+    .video img {
+      width: 100%;
+      max-width: 920px;
+      border-radius: 12px;
+      border: 3px solid #ff8c00;
+    }
+    
+    .video-info-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.8);
+      border: 1px solid #ff8c00;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin: 10px auto 0 auto;
+      font-size: 11px;
+      flex-wrap: wrap;
+      gap: 15px;
+      max-width: 920px;
+      width: 100%;
+    }
+    
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: fit-content;
+    }
+    
+    .info-label {
+      color: #808080;
+      font-weight: bold;
+    }
+    
+    /* VU Meter Styles */
+    .vu-meter {
+      display: flex;
+      align-items: end;
+      gap: 2px;
+      height: 12px;
+      width: 40px;
+    }
+    
+    .vu-bar {
+      width: 4px;
+      height: 2px;
+      background: #333;
+      border-radius: 1px;
+      transition: all 0.1s ease;
+    }
+    
+    .vu-bar.active {
+      background: #0f0; /* Green for levels 1-2 */
+    }
+    
+    .vu-bar.active.level-1 { 
+      height: 3px; 
+      background: #0f0; /* Green */
+    }
+    .vu-bar.active.level-2 { 
+      height: 5px; 
+      background: #0f0; /* Green */
+    }
+    .vu-bar.active.level-3 { 
+      height: 7px; 
+      background: #ff0 !important; /* Yellow */
+    }
+    .vu-bar.active.level-4 { 
+      height: 9px; 
+      background: #ff0 !important; /* Yellow */
+    }
+    .vu-bar.active.level-5 { 
+      height: 12px; 
+      background: #f00 !important; /* Red */
+    }
+    
+    .motor {
+      grid-area: motor;
+      background: rgba(20, 40, 20, 0.95);
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    
+    .mbtn {
+      background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+      border: 3px solid #00ff00;
+      color: #00ff00;
+      padding: 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 20px;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    
+    .mbtn:hover {
+      background: #00ff00;
+      color: #000;
+      box-shadow: 0 0 15px #00ff00;
+      transform: translateY(-2px);
+    }
+    
+    .stop {
+      border-color: #f00 !important;
+      color: #f00 !important;
+    }
+    
+    .stop:hover {
+      background: #f00 !important;
+      color: #fff !important;
+    }
+    
+    .led {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-left: 8px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .ok { background: #0f0; box-shadow: 0 0 8px #0f0; }
+    .warn { background: #ff0; box-shadow: 0 0 8px #ff0; }
+    .err { background: #f00; box-shadow: 0 0 8px #f00; }
+    
+    .audio {
+      grid-area: audio;
+      background: rgba(40, 20, 40, 0.95);
+    }
+    
+    .group {
+      margin: 15px 0;
+      padding: 12px;
+      border: 1px solid #444;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+    
+    .group h4 {
+      color: #ff6600;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    
+    .slider {
+      width: 100%;
+      background: #555;
+      -webkit-appearance: none;
+      height: 10px;
+      border-radius: 5px;
+      outline: none;
+    }
+    
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #ff8c00;
+      cursor: pointer;
+    }
+    
+    .slider::-moz-range-thumb {
+      -moz-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #ff8c00;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .vu {
+      width: 100%;
+      height: 24px;
+      background: #000;
+      border: 2px solid #ff8c00;
+      border-radius: 6px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    
+    .vubar {
+      height: 100%;
+      background: linear-gradient(90deg, #44ff44, #ffaa00, #ff4444);
+      border-radius: 4px;
+      transition: width 0.1s;
+      width: 0%;
+    }
+    
+    .res {
+      display: flex;
+      gap: 8px;
+      margin: 10px 0;
+    }
+    
+    .r {
+      background: #555;
+      border: 2px solid #ff8c00;
+      color: #cccccc;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      text-align: center;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .r:hover {
+      background: #666;
+      border-color: #ff9911;
+    }
+    
+    .r.active {
+      background: #ff8c00;
+      color: #000;
+      font-weight: bold;
+    }
+    
+    .r.active:hover {
+      background: #ff9911;
+    }
+    
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .bat {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 12px 0;
+    }
+    
+    .batbar {
+      flex: 1;
+      height: 18px;
+      background: #333;
+      border: 2px solid #ff8c00;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    
+    .batfill {
+      height: 100%;
+      border-radius: 8px;
+      transition: width 0.5s, background 0.5s;
+    }
+    
+    .sound {
+      grid-area: sound;
+      background: rgba(40, 30, 20, 0.95);
+    }
+    
+    .soundgrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    
+    .sbtn {
+      background: linear-gradient(145deg, #333, #444);
+      border: 2px solid #ff6600;
+      color: #ff6600;
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    
+    .sbtn:hover {
+      background: #ff6600;
+      color: #000;
+      transform: translateY(-1px);
+    }
+    
+    .log {
+      grid-area: log;
+      background: rgba(0, 0, 0, 0.9);
+      border: 2px solid #808080;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 12px;
+      overflow-y: auto;
+      max-height: 60px;
+      font-family: 'Courier New', monospace;
+      color: #cccccc;
+    }
+    
+    h3 {
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    
+    @media (max-width: 1000px) {
+      .container {
+        grid-template-areas:
+          "tts tts"
+          "video video"
+          "motor audio"
+          "sound sound"
+          "log log";
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    
+    @media (max-width: 600px) {
+      .container {
+        grid-template-areas:
+          "tts"
+          "video"
+          "motor"
+          "audio"
+          "sound"
+          "log";
+        grid-template-columns: 1fr;
+        padding: 10px;
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="panel tts">
+    <div id="recent" class="pills" style="display:none;">
+      <div class="pill" onclick="pick(recentPhrases[0])" id="recent1"></div>
+      <div class="pill" onclick="pick(recentPhrases[1])" id="recent2"></div>
+    </div>
+    <div id="predictions" class="pills" style="display:none;"></div>
+    <div id="diacritics" class="pills" style="display:none;">
+      <div class="pill diacritic-pill" onclick="insertDiacritic('ă')">ă</div>
+      <div class="pill diacritic-pill" onclick="insertDiacritic('â')">â</div>
+      <div class="pill diacritic-pill" onclick="insertDiacritic('î')">î</div>
+      <div class="pill diacritic-pill" onclick="insertDiacritic('ș')">ș</div>
+      <div class="pill diacritic-pill" onclick="insertDiacritic('ț')">ț</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex:1">
+      <input id="tts" placeholder="Type message to speak..." oninput="predictText(this.value)" onkeydown="handleTTSKeydown(event)" style="flex:1" />
+      <button class="btn" onclick="clearText()" title="Clear text">×</button>
+    </div>
+    <button class="btn btn-orange" onclick="speak()">Speak</button>
+    <div class="lang">
+      <button id="len" class="active" onclick="setLang('en')">EN</button>
+      <button id="lro" onclick="setLang('ro')">RO</button>
+      <button id="lde" onclick="setLang('de')">DE</button>
+    </div>
+  </div>
+
+  <div class="panel motor">
+    <h3>Motor <span id="mled" class="led warn"></span></h3>
+    <div class="grid">
+      <div></div>
+      <button class="mbtn" onmousedown="go('forward')" onmouseup="stopM()">▲</button>
+      <div></div>
+      <button class="mbtn" onmousedown="go('left')" onmouseup="stopM()">◀</button>
+      <button class="mbtn stop" onclick="estop()">⬛</button>
+      <button class="mbtn" onmousedown="go('right')" onmouseup="stopM()">▶</button>
+      <div></div>
+      <button class="mbtn" onmousedown="go('backward')" onmouseup="stopM()">▼</button>
+      <div></div>
+    </div>
+    <div class="row">
+      <span>Speed:</span>
+      <input id="spd" type="range" class="slider" min="50" max="255" value="150" oninput="document.getElementById('spdv').textContent=this.value" />
+      <span id="spdv" style="min-width:40px;color:#ff6600;font-weight:bold">150</span>
+    </div>
+    <div class="row" style="margin-top: 10px;">
+      <button class="btn" onclick="testMotors()" style="flex:1">Test Motors</button>
+    </div>
+  </div>
+
+  <div class="panel video">
+    <video id="vid" width="100%" height="auto" controls style="max-width: 920px; border-radius: 12px; border: 3px solid #ff8c00;">
+      <source id="hls-source" src="" type="application/x-mpegURL">
+      Your browser does not support the video tag.
+    </video>
+    <div class="video-info-bar">
+      <div class="info-item">
+        <span class="info-label">Stream:</span>
+        <span id="stream-status">Stopped</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Time:</span>
+        <div id="datetime">Loading...</div>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Resolution:</span>
+        <span id="resolution-display">480p</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">FPS:</span>
+        <span id="fps">10</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Battery:</span>
+        <span id="battery-display">--%</span>
+        <span id="voltage-display" style="margin-left:5px">(--V)</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Bandwidth:</span>
+        <span id="bwtext">0 KB/s</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Data:</span>
+        <span id="data-used">0 MB</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Audio:</span>
+        <span id="audio-quality">32kbps (good)</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Mic:</span>
+        <div class="vu-meter">
+          <div class="vu-bar" id="vu-bar-1"></div>
+          <div class="vu-bar" id="vu-bar-2"></div>
+          <div class="vu-bar" id="vu-bar-3"></div>
+          <div class="vu-bar" id="vu-bar-4"></div>
+          <div class="vu-bar" id="vu-bar-5"></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:8px">
+      <button class="btn" onclick="refreshStream()" style="padding:2px 6px;font-size:10px;">Refresh</button>
+      <span id="uptime" style="margin-left:15px;font-size:10px;opacity:0.8">Uptime: 00:00:00</span>
+      <span id="auto-stream-status" style="margin-left:15px;font-size:10px;opacity:0.8">Auto-start: Enabled</span>
+    </div>
+  </div>
+
+  <div class="panel audio">
+    <h3>Media Controls</h3>
+    <div class="group">
+      <h4>Stream Settings</h4>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button id="r320p" class="r" onclick="setRes('320p')" style="flex:1">320p</button>
+        <button id="r480p" class="r active" onclick="setRes('480p')" style="flex:1">480p</button>
+        <button id="r720p" class="r" onclick="setRes('720p')" style="flex:1">720p</button>
+      </div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+        <button id="fps10" class="r active" onclick="setFPS(10)" style="flex:1">10</button>
+        <button id="fps15" class="r" onclick="setFPS(15)" style="flex:1">15</button>
+        <button id="fps20" class="r" onclick="setFPS(20)" style="flex:1">20</button>
+      </div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn" onclick="snap()" style="flex:1">Snapshot</button>
+        <button class="btn" id="recordBtn" onclick="toggleRecording()" style="flex:1">Start Rec</button>
+      </div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+        <button class="btn" onclick="statusAll()" style="flex:1">System</button>
+        <button class="btn" onclick="rebootSystem()" style="flex:1;border-color:#ff0000;color:#ff0000">Reboot</button>
+      </div>
+    </div>
+
+
+    <div class="group">
+      <h4>Smart Debug</h4>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn" onclick="runSystemDiagnostics()" style="flex:1;font-size:10px;padding:4px">Diagnose</button>
+      </div>
+      <div id="debug-output" style="font-size:9px;color:#cccccc;margin-top:8px;max-height:100px;overflow-y:auto;background:rgba(0,0,0,0.3);padding:4px;border-radius:4px;border:1px solid #444;"></div>
+    </div>
+
+    <div class="group">
+      <h4>Speaker</h4>
+      <input id="vol" type="range" class="slider" min="0" max="100" value="70" oninput="setVol(this.value)" />
+      <div class="row">
+        <span>Volume: <span id="volv">70%</span></span>
+        <button id="mutebtn" class="btn" onclick="toggleMute()">Sound</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h4>Audio Quality</h4>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+        <span style="color:#ff6600;font-size:12px;">Mode:</span>
+        <span style="color:#cccccc;font-size:10px;flex:1">Low Bandwidth (32kbps, 16kHz, Mono)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel sound">
+    <h3>Sound Effects</h3>
+    <div class="soundgrid">
+      <button class="sbtn" onclick="beep(0)">1</button>
+      <button class="sbtn" onclick="beep(1)">2</button>
+      <button class="sbtn" onclick="beep(2)">3</button>
+      <button class="sbtn" onclick="beep(3)">4</button>
+      <button class="sbtn" onclick="beep(4)">5</button>
+      <button class="sbtn" onclick="beep(5)">6</button>
+      <button class="sbtn" onclick="beep(6)">7</button>
+      <button class="sbtn" onclick="beep(7)">8</button>
+      <button class="sbtn" onclick="beep(8)">9</button>
+      <button class="sbtn" onclick="beep(9)">10</button>
+    </div>
+  </div>
+
+  <div id="log" class="panel log">Avatar Tank System Ready</div>
+</div>
+
+<script>
+// Global variables
+let lang = 'en';
+let predictionTimeout = null;
+let recentPhrases = [];
+let startTime = Date.now();
+let frameCount = 0;
+let lastFrameTime = Date.now();
+let currentFPS = 0;
+let configuredFPS = 10; // Track the configured/target FPS separately from measured FPS
+let bandwidthSamples = [];
+let vuMeterActive = false;
+let recordingActive = false;
+let totalDataUsed = 0;
+let lastBandwidthUpdate = Date.now();
+let audioActive = false;
+let audioContext = null;
+let socket = null;
+let muted = false;
+let streamActive = false;
+let hls = null;
+let webrtcPlayer = null;
+
+// Utility functions
+const sid = (id) => document.getElementById(id);
+const log = (m) => {
+  const logEl = sid('log');
+  if (logEl) logEl.textContent = '[' + new Date().toLocaleTimeString() + '] ' + m;
+  console.log('[Frontend]', m);
+};
+
+// Initialize WebSocket
+function initWebSocket() {
+  if (socket && socket.connected) return socket;
+  
+  socket = io({
+    timeout: 10000,
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000
+  });
+  
+  socket.on('connect', () => {
+    console.log('Socket connected:', socket.id);
+    updateMicStatus('WebSocket ready');
+  });
+  
+  socket.on('audio_status', (data) => {
+    if (data.status === 'error') {
+      updateMicStatus('Audio error: ' + (data.message || 'Unknown'));
+      audioActive = false;
+      updateMicButton();
+    } else if (data.status === 'started') {
+      updateMicStatus('Audio streaming active');
+    }
+  });
+  
+  socket.on('audio_data', (data) => {
+    if (audioContext) {
+      try {
+        playAudioChunk(data);
+      } catch (e) {
+        console.error('Audio playback error:', e);
+      }
+    }
+  });
+  
+  return socket;
+}
+
+// Initialize Web Audio
+function initWebAudio() {
+  if (audioContext) return true;
+  
+  try {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)({
+      sampleRate: 44100,  // Updated to match the new audio format
+      latencyHint: 'interactive'
+    });
+    
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    
+    return true;
+  } catch (e) {
+    console.error('Web Audio initialization failed:', e);
+    return false;
+  }
+}
+
+// Periodic motor status check
+async function checkMotorStatus() {
+  try {
+    const response = await fetch('/system_status');
+    const status = await response.json();
+    const led = sid('mled');
+    
+    // Check both 'ok' and 'connected' for backward compatibility
+    const motorOk = status.motors.ok || status.motors.connected || false;
+    if (led) led.className = 'led ' + (motorOk ? 'ok' : 'err');
+  } catch (e) {
+    console.log('Motor status check failed:', e);
+  }
+}
+
+// Audio processing
+function playAudioChunk(audioData) {
+  if (!audioActive || !audioContext) return;
+  
+  try {
+    if (!audioData || !audioData.data) return;
+    
+    const binaryString = atob(audioData.data);
+    const arrayBuffer = new ArrayBuffer(binaryString.length);
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    for (let i = 0; i < binaryString.length; i++) {
+      uint8Array[i] = binaryString.charCodeAt(i);
+    }
+    
+    if (arrayBuffer.byteLength < 100) return;
+    
+    const samples = new Int16Array(arrayBuffer);
+    const floatSamples = new Float32Array(samples.length);
+    
+    let sumSquares = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const sample = samples[i] / 32768.0;
+      floatSamples[i] = sample;
+      sumSquares += sample * sample;
+    }
+    
+    const rms = Math.sqrt(sumSquares / samples.length);
+    window.lastAudioRMS = rms;
+    
+    const audioBuffer = audioContext.createBuffer(1, floatSamples.length, 44100);  // Updated sample rate
+    audioBuffer.copyToChannel(floatSamples, 0);
+    
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
+    source.start();
+    
+  } catch (e) {
+    console.error('playAudioChunk error:', e);
+  }
+}
+
+// UI Update functions
+function updateDateTime() {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-GB', {hour12: false});
+  const dateStr = now.toLocaleDateString('en-GB');
+  const datetimeEl = sid('datetime');
+  if (datetimeEl) {
+    datetimeEl.innerHTML = timeStr + '<br><small>' + dateStr + '</small>';
+  }
+  
+  const uptimeEl = sid('uptime');
+  if (uptimeEl) {
+    const uptime = Date.now() - startTime;
+    const hours = Math.floor(uptime / 3600000);
+    const minutes = Math.floor((uptime % 3600000) / 60000);
+    const seconds = Math.floor((uptime % 60000) / 1000);
+    uptimeEl.textContent = 'Uptime: ' + 
+      hours.toString().padStart(2,'0') + ':' + 
+      minutes.toString().padStart(2,'0') + ':' + 
+      seconds.toString().padStart(2,'0');
+  }
+}
+
+// Real bandwidth monitoring variables
+let lastNetworkBytes = { wlan0: 0, zt2lrsngy5: 0 };
+let bandwidthHistory = [];
+let realBandwidthKBps = 0;
+
+// Audio quality monitoring
+let audioQualityStatus = 'unknown';
+let audioBitrate = 32;
+
+// VU Meter variables
+let vuAnalyser = null;
+let vuMicrophone = null;
+let vuInitializationInProgress = false;
+let vuMeterInitializedForCurrentConnection = false;
+
+function initVUMeter() {
+  try {
+    console.log('[VU Meter] Initializing VU meter...');
+    
+    // Prevent multiple simultaneous initializations
+    if (vuInitializationInProgress) {
+      console.log('[VU Meter] Initialization already in progress, skipping...');
+      return;
+    }
+    
+    // Check if already initialized and working
+    if (vuAnalyser && vuMeterActive && vuAnalyser.context && vuAnalyser.context.state === 'running') {
+      console.log('[VU Meter] Already initialized and running, skipping...');
+      return;
+    }
+    
+    vuInitializationInProgress = true;
+    
+    // Clean up existing audio context to prevent connection errors
+    if (vuAnalyser) {
+      console.log('[VU Meter] Cleaning up existing audio context...');
+      try {
+        if (vuAnalyser.context && vuAnalyser.context.state !== 'closed') {
+          vuAnalyser.context.close();
+        }
+      } catch (e) {
+        console.log('[VU Meter] Error closing audio context:', e);
+      }
+      vuAnalyser = null;
+    }
+    
+    // Reset VU meter state
+    vuMeterActive = false;
+    vuMicrophone = null;
+    
+    // Try to find the video element that contains the WebRTC stream
+    const videoElement = document.querySelector('video');
+    if (!videoElement) {
+      console.log('[VU Meter] No video element found, retrying...');
+      setTimeout(initVUMeter, 1000);
+      return;
+    }
+    
+    console.log('[VU Meter] Video element found:', videoElement);
+    console.log('[VU Meter] Video srcObject:', videoElement.srcObject);
+    
+    // Wait for video to have a stream
+    let retryCount = 0;
+    const maxRetries = 20;
+    
+    const checkVideoStream = () => {
+      retryCount++;
+      console.log(`[VU Meter] Checking video stream (attempt ${retryCount}/${maxRetries})...`);
+      
+      if (videoElement.srcObject && videoElement.srcObject.getAudioTracks().length > 0) {
+        console.log('[VU Meter] Video stream found with audio tracks:', videoElement.srcObject.getAudioTracks().length);
+        
+        try {
+          // Create audio context and analyser
+          const vuAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+          vuAnalyser = vuAudioContext.createAnalyser();
+          
+          // Connect to audio using MediaStream only (more reliable, no "already connected" issues)
+          vuMicrophone = vuAudioContext.createMediaStreamSource(videoElement.srcObject);
+          vuMicrophone.connect(vuAnalyser);
+          
+          console.log('[VU Meter] Audio context created and connected (MediaStream method)');
+          
+          // Configure analyser for better performance
+          vuAnalyser.fftSize = 128; // Smaller FFT for better performance
+          vuAnalyser.smoothingTimeConstant = 0.3; // More smoothing for stability
+          
+          // Start VU meter updates
+          vuMeterActive = true;
+          vuInitializationInProgress = false;
+          updateVUMeter();
+          
+          console.log('[VU Meter] Initialized successfully');
+        } catch (audioError) {
+          console.log('[VU Meter] Audio context error:', audioError);
+          vuInitializationInProgress = false;
+          showMutedVUMeter();
+        }
+      } else if (retryCount < maxRetries) {
+        console.log(`[VU Meter] Video stream not ready yet (srcObject: ${!!videoElement.srcObject}, audioTracks: ${videoElement.srcObject ? videoElement.srcObject.getAudioTracks().length : 0}), retrying...`);
+        setTimeout(checkVideoStream, 1000);
+      } else {
+        console.log('[VU Meter] Max retries reached, showing muted VU meter');
+        vuInitializationInProgress = false;
+        showMutedVUMeter();
+      }
+    };
+    
+    checkVideoStream();
+    
+  } catch (error) {
+    console.log('[VU Meter] Error initializing:', error);
+    vuInitializationInProgress = false;
+    showMutedVUMeter();
+  }
+}
+
+function updateVUMeter() {
+  if (!vuMeterActive || !vuAnalyser) {
+    setTimeout(updateVUMeter, 100); // 10 FPS
+    return;
+  }
+  
+  try {
+    // Get frequency data for better audio level detection
+    const bufferLength = vuAnalyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    vuAnalyser.getByteFrequencyData(dataArray);
+    
+    // Calculate average volume - only use lower frequencies for better performance
+    let sum = 0;
+    const sampleSize = Math.min(32, bufferLength / 4); // Only sample first quarter
+    for (let i = 0; i < sampleSize; i++) {
+      sum += dataArray[i];
+    }
+    const average = sum / sampleSize;
+    
+    // Convert to VU meter level (0-5) - Reduced sensitivity by 25%
+    const level = Math.min(5, Math.max(0, Math.floor(average / 33))); // 25% less sensitive
+    
+    // Update VU meter display
+    updateVUMeterDisplay(level);
+    
+    // Schedule next update - 10 FPS for responsive feedback
+    setTimeout(updateVUMeter, 100); // 10 FPS - good balance of responsiveness and performance
+    
+  } catch (error) {
+    // Silent error handling - no console logging to save CPU
+    setTimeout(updateVUMeter, 1000);
+  }
+}
+
+function updateVUMeterDisplay(level) {
+  // No console logging - pure performance
+  
+  for (let i = 1; i <= 5; i++) {
+    const bar = document.getElementById(`vu-bar-${i}`);
+    if (bar) {
+      // Remove all classes
+      bar.className = 'vu-bar';
+      
+      if (i <= level) {
+        bar.classList.add('active');
+        bar.classList.add(`level-${i}`);
+        
+        // No logging - pure performance
+      }
+    }
+  }
+}
+
+function showMutedVUMeter() {
+  // Reset initialization flag
+  vuInitializationInProgress = false;
+  
+  // Show all bars as muted (gray)
+  for (let i = 1; i <= 5; i++) {
+    const bar = document.getElementById(`vu-bar-${i}`);
+    if (bar) {
+      bar.className = 'vu-bar';
+      bar.style.background = '#666';
+    }
+  }
+  
+  console.log('[VU Meter] Showing muted VU meter - waiting for WebRTC stream');
+}
+
+// Manual VU meter initialization for testing
+function manualInitVUMeter() {
+  console.log('[VU Meter] Manual initialization triggered');
+  
+  const videoElement = document.querySelector('video');
+  console.log('[VU Meter] Current state:', {
+    videoElement: !!videoElement,
+    videoSrcObject: videoElement ? !!videoElement.srcObject : false,
+    audioTracks: videoElement && videoElement.srcObject ? videoElement.srcObject.getAudioTracks().length : 0,
+    vuMeterActive: vuMeterActive,
+    vuAnalyser: !!vuAnalyser
+  });
+  
+  if (videoElement && videoElement.srcObject && videoElement.srcObject.getAudioTracks().length > 0) {
+    console.log('[VU Meter] Video stream available, but VU meter will be initialized automatically when WebRTC connects');
+  } else {
+    console.log('[VU Meter] No video stream available for manual initialization');
+    console.log('[VU Meter] Video element:', videoElement);
+    if (videoElement) {
+      console.log('[VU Meter] Video srcObject:', videoElement.srcObject);
+    }
+  }
+}
+
+// Make functions available globally for testing
+window.manualInitVUMeter = manualInitVUMeter;
+window.testVUMeterColors = testVUMeterColors;
+window.forcePageRefresh = () => {
+  console.log('[Manual] Forcing page refresh with stream refresh...');
+  refreshStream();
+};
+window.testVUMeterWithCurrentAudio = () => {
+  console.log('[Manual] Testing VU meter with current audio levels...');
+  // Simulate the current audio levels we're seeing (2.6-3.9)
+  const testLevels = [0, 1, 2, 3, 4, 5];
+  testLevels.forEach((level, index) => {
+    setTimeout(() => {
+      console.log(`[VU Meter Test] Showing level ${level}`);
+      updateVUMeterDisplay(level);
+    }, index * 500);
+  });
+  
+  // Reset after test
+  setTimeout(() => {
+    updateVUMeterDisplay(0);
+    console.log('[VU Meter Test] Current audio test completed');
+  }, 3000);
+};
+window.restartVUMeter = restartVUMeter;
+window.testVUMeterSensitivity = () => {
+  console.log('[VU Meter Test] Testing sensitivity levels...');
+  const testLevels = [0, 1, 2, 3, 4, 5];
+  testLevels.forEach((level, index) => {
+    setTimeout(() => {
+      console.log(`[VU Meter Test] Showing level ${level}`);
+      updateVUMeterDisplay(level);
+    }, index * 1000);
+  });
+  
+  // Reset after test
+  setTimeout(() => {
+    updateVUMeterDisplay(0);
+    console.log('[VU Meter Test] Sensitivity test completed');
+  }, 6000);
+};
+
+// Test function to verify VU meter colors
+function testVUMeterColors() {
+  console.log('[VU Meter] Testing VU meter colors...');
+  
+  // Test each level with colors
+  const levels = [
+    { level: 1, color: 'Green', delay: 500 },
+    { level: 2, color: 'Green', delay: 1000 },
+    { level: 3, color: 'Yellow', delay: 1500 },
+    { level: 4, color: 'Yellow', delay: 2000 },
+    { level: 5, color: 'Red', delay: 2500 }
+  ];
+  
+  levels.forEach(({ level, color, delay }) => {
+    setTimeout(() => {
+      console.log(`[VU Meter Test] Showing level ${level} (${color})`);
+      updateVUMeterDisplay(level);
+    }, delay);
+  });
+  
+  // Reset after test
+  setTimeout(() => {
+    updateVUMeterDisplay(0);
+    console.log('[VU Meter Test] Color test completed');
+  }, 3000);
+}
+
+// Test function to simulate VU meter activity
+function testVUMeterDisplay() {
+  console.log('[VU Meter] Testing VU meter display...');
+  let level = 0;
+  let direction = 1;
+  
+  const testInterval = setInterval(() => {
+    level += direction * 0.5;
+    if (level >= 5) {
+      level = 5;
+      direction = -1;
+    } else if (level <= 0) {
+      level = 0;
+      direction = 1;
+    }
+    
+    updateVUMeterDisplay(Math.floor(level));
+    
+    if (level === 0 && direction === 1) {
+      clearInterval(testInterval);
+      console.log('[VU Meter] Test completed');
+    }
+  }, 200);
+}
+
+// Test function to simulate audio data
+function testVUMeterWithAudio() {
+  console.log('[VU Meter] Testing VU meter with simulated audio data...');
+  
+  if (!vuAnalyser) {
+    console.log('[VU Meter] No analyser available, cannot test audio simulation');
+    return;
+  }
+  
+  // Temporarily override the analyser data
+  const originalGetByteFrequencyData = vuAnalyser.getByteFrequencyData;
+  
+  vuAnalyser.getByteFrequencyData = function(array) {
+    // Fill with simulated audio data that should trigger VU meter
+    for (let i = 0; i < array.length; i++) {
+      array[i] = Math.random() * 150 + 100; // Random values between 100-250 (should show level 4-5)
+    }
+  };
+  
+  console.log('[VU Meter] Simulated audio data injected for 5 seconds...');
+  
+  // Test for 5 seconds
+  setTimeout(() => {
+    vuAnalyser.getByteFrequencyData = originalGetByteFrequencyData;
+    console.log('[VU Meter] Audio simulation test completed');
+  }, 5000);
+}
+
+// Debug function to check audio context state
+function debugVUMeter() {
+  console.log('[VU Meter] Debug information:');
+  console.log('- VU Meter Active:', vuMeterActive);
+  console.log('- Analyser:', !!vuAnalyser);
+  console.log('- Microphone:', !!vuMicrophone);
+  
+  if (vuAnalyser) {
+    console.log('- FFT Size:', vuAnalyser.fftSize);
+    console.log('- Frequency Bin Count:', vuAnalyser.frequencyBinCount);
+    console.log('- Smoothing:', vuAnalyser.smoothingTimeConstant);
+  }
+  
+  const videoElement = document.querySelector('video');
+  if (videoElement) {
+    console.log('- Video Element:', !!videoElement);
+    console.log('- Video srcObject:', !!videoElement.srcObject);
+    console.log('- Audio Tracks:', videoElement.srcObject ? videoElement.srcObject.getAudioTracks().length : 0);
+    console.log('- Video Muted:', videoElement.muted);
+    console.log('- Video Volume:', videoElement.volume);
+  }
+}
+
+// Quick test to verify VU meter display works
+function quickVUTest() {
+  console.log('[VU Meter] Quick VU meter test...');
+  
+  // Test each level
+  for (let level = 1; level <= 5; level++) {
+    setTimeout(() => {
+      updateVUMeterDisplay(level);
+      console.log(`[VU Meter] Testing level ${level}`);
+    }, level * 500);
+  }
+  
+  // Reset after test
+  setTimeout(() => {
+    updateVUMeterDisplay(0);
+    console.log('[VU Meter] Quick test completed');
+  }, 3000);
+}
+
+// Test VU meter sensitivity with simulated audio levels
+function testVUMeterSensitivity() {
+  console.log('[VU Meter] Testing sensitivity with simulated audio levels...');
+  
+  // Simulate different audio levels (0-255 range)
+  const testLevels = [0, 5, 10, 20, 30, 50, 100, 150, 200, 255];
+  testLevels.forEach((level, index) => {
+    setTimeout(() => {
+      // Use the same calculation as the real VU meter
+      const simulatedLevel = Math.min(5, Math.max(0, Math.floor(level / 10)));
+      console.log(`[VU Meter Test] Simulated audio: ${level} -> Level: ${simulatedLevel}`);
+      updateVUMeterDisplay(simulatedLevel);
+    }, index * 800);
+  });
+  
+  // Reset after test
+  setTimeout(() => {
+    updateVUMeterDisplay(0);
+    console.log('[VU Meter] Sensitivity test completed');
+  }, testLevels.length * 800 + 1000);
+}
+
+// Test actual microphone input
+function testMicrophoneInput() {
+  console.log('[VU Meter] Testing actual microphone input...');
+  
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.log('[VU Meter] getUserMedia not supported');
+    return;
+  }
+  
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      console.log('[VU Meter] Microphone access granted');
+      
+      // Create temporary audio context for testing
+      const testAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const testAnalyser = testAudioContext.createAnalyser();
+      const testMicrophone = testAudioContext.createMediaStreamSource(stream);
+      
+      testMicrophone.connect(testAnalyser);
+      testAnalyser.fftSize = 256;
+      
+      // Test for 5 seconds
+      let testCount = 0;
+      const testInterval = setInterval(() => {
+        const bufferLength = testAnalyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        testAnalyser.getByteFrequencyData(dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / bufferLength;
+        
+        console.log(`[VU Meter Mic Test] Sample ${testCount}: Average: ${average.toFixed(1)}`);
+        testCount++;
+        
+        if (testCount >= 10) {
+          clearInterval(testInterval);
+          testAudioContext.close();
+          stream.getTracks().forEach(track => track.stop());
+          console.log('[VU Meter] Microphone test completed');
+        }
+      }, 500);
+      
+    })
+    .catch(error => {
+      console.log('[VU Meter] Microphone access denied:', error);
+    });
+}
+
+// Force restart VU meter
+function restartVUMeter() {
+  console.log('[VU Meter] Force restarting VU meter...');
+  
+  // Properly clean up audio context
+  if (vuAnalyser && vuAnalyser.context) {
+    try {
+      if (vuAnalyser.context.state !== 'closed') {
+        vuAnalyser.context.close();
+      }
+    } catch (e) {
+      console.log('[VU Meter] Error closing audio context during restart:', e);
+    }
+  }
+  
+  vuMeterActive = false;
+  vuAnalyser = null;
+  vuMicrophone = null;
+  vuInitializationInProgress = false;
+  
+  // Clear any existing bars
+  for (let i = 1; i <= 5; i++) {
+    const bar = document.getElementById(`vu-bar-${i}`);
+    if (bar) {
+      bar.className = 'vu-bar';
+      bar.style.background = '#333';
+    }
+  }
+  
+  // Wait a bit then reinitialize
+  setTimeout(() => {
+    initVUMeter();
+  }, 500);
+}
+
+window.testVUMeterDisplay = testVUMeterDisplay;
+window.testVUMeterWithAudio = testVUMeterWithAudio;
+window.debugVUMeter = debugVUMeter;
+window.quickVUTest = quickVUTest;
+window.restartVUMeter = restartVUMeter;
+
+async function updateAudioQuality() {
+  try {
+    const response = await fetch('/api/audio/quality');
+    if (response.ok) {
+      const data = await response.json();
+      audioQualityStatus = data.quality_status;
+      audioBitrate = data.current_bitrate;
+      
+      // Update audio quality indicator
+      const audioQualityEl = sid('audio-quality');
+      if (audioQualityEl) {
+        audioQualityEl.textContent = `${audioBitrate}kbps (${audioQualityStatus})`;
+        
+        // Color coding
+        if (audioQualityStatus === 'good') {
+          audioQualityEl.style.color = '#0f0'; // Green
+        } else if (audioQualityStatus === 'degraded') {
+          audioQualityEl.style.color = '#ff0'; // Yellow
+        } else {
+          audioQualityEl.style.color = '#f00'; // Red
+        }
+      }
+    }
+  } catch (error) {
+    console.log('Audio quality monitoring error:', error);
+  }
+}
+
+// Update audio quality every 10 seconds
+setInterval(updateAudioQuality, 10000);
+
+async function updateBandwidth() {
+  const vid = sid('vid');
+  const now = Date.now();
+  
+  // Check if WebRTC is active or video has loaded metadata
+  const isStreamActive = (webrtcPlayer && webrtcPlayer.pc && webrtcPlayer.pc.connectionState === 'connected') || 
+                        (vid && (vid.naturalWidth > 0 || vid.videoWidth > 0));
+  
+  if (isStreamActive) {
+    frameCount++;
+    const timeDiff = now - lastFrameTime;
+    
+    if (timeDiff > 1000) {
+      currentFPS = frameCount / (timeDiff / 1000);
+      frameCount = 0;
+      lastFrameTime = now;
+      
+      // Keep showing the configured FPS, not measured FPS
+      const fpsEl = sid('fps');
+      if (fpsEl) fpsEl.textContent = configuredFPS;
+      
+      // Get actual stream bandwidth from system
+      try {
+        const response = await fetch('/api/stream/bandwidth');
+        if (response.ok) {
+          const data = await response.json();
+          realBandwidthKBps = data.stream_bandwidth_kbps || 0;
+          
+          // Update bandwidth history for smoothing
+          bandwidthHistory.push(realBandwidthKBps);
+          if (bandwidthHistory.length > 10) {
+            bandwidthHistory.shift();
+          }
+          
+          // Calculate smoothed bandwidth
+          const avgBandwidth = bandwidthHistory.reduce((a, b) => a + b, 0) / bandwidthHistory.length;
+          
+          const bwText = sid('bwtext');
+          if (bwText) {
+            bwText.textContent = Math.round(avgBandwidth) + ' KB/s';
+            // Apply color coding: green <100, yellow <300, red >=300
+            if (avgBandwidth < 100) {
+              bwText.style.color = '#0f0'; // Green
+            } else if (avgBandwidth < 300) {
+              bwText.style.color = '#ff0'; // Yellow
+            } else {
+              bwText.style.color = '#f00'; // Red
+            }
+          }
+          
+          // Update total data usage
+          const bandwidthTimeDiff = (now - lastBandwidthUpdate) / 1000;
+          if (bandwidthTimeDiff > 0) {
+            totalDataUsed += (avgBandwidth * bandwidthTimeDiff);
+            lastBandwidthUpdate = now;
+            
+            const totalDataEl = sid('data-used');
+            if (totalDataEl) {
+              const totalMB = totalDataUsed / 1024;
+              totalDataEl.textContent = totalMB.toFixed(1) + ' MB';
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Bandwidth monitoring error:', error);
+        // Fallback to showing configured bitrate
+        const resDisplay = sid('resolution-display');
+        const currentRes = resDisplay ? resDisplay.textContent : '320p';
+        
+        let estimatedBandwidth = 0;
+        switch(currentRes) {
+          case '320p': estimatedBandwidth = 120; break;
+          case '480p': estimatedBandwidth = 180; break;
+          case '720p': estimatedBandwidth = 300; break;
+          default: estimatedBandwidth = 180;
+        }
+        
+        const bwText = sid('bwtext');
+        if (bwText) {
+          bwText.textContent = estimatedBandwidth + ' KB/s (est)';
+          bwText.style.color = '#ff0'; // Yellow for estimated
+        }
+      }
+    }
+  } else {
+    // Stream not active, show zero bandwidth
+    const bwText = sid('bwtext');
+    if (bwText) {
+      bwText.textContent = '0 KB/s';
+      bwText.style.color = '#666'; // Gray
+    }
+    
+    const fpsEl = sid('fps');
+    if (fpsEl) {
+      fpsEl.textContent = configuredFPS; // Show configured FPS even when stream inactive
+    }
+  }
+}
+
+function enhancedVUMeter() {
+  const vuBar = sid('vu');
+  if (!vuBar) return;
+  
+  if (vuMeterActive && window.lastAudioRMS !== undefined) {
+    let rms = Math.max(0, Math.min(1, window.lastAudioRMS || 0));
+    let level = Math.round(rms * 100 * 5); // Amplify for visibility
+    level = Math.max(0, Math.min(100, level));
+    vuBar.style.width = level + '%';
+  } else {
+    vuBar.style.width = '0%';
+  }
+}
+
+// Text handling
+function clearText() {
+  const input = sid('tts');
+  if (input) {
+    input.value = '';
+    input.focus();
+    const predictions = sid('predictions');
+    if (predictions) predictions.style.display = 'none';
+    log('Text cleared');
+  }
+}
+
+function pick(t) {
+  const input = sid('tts');
+  if (input) {
+    const words = input.value.trim().split(/\s+/);
+    if (words.length > 0 && input.value.trim().length > 0) {
+      words[words.length - 1] = t;
+      input.value = words.join(' ');
+    } else {
+      input.value = t;
+    }
+    input.value += ' ';
+    input.focus();
+    const predictions = sid('predictions');
+    if (predictions) predictions.style.display = 'none';
+    
+    // Learn the picked word
+    learnWords([t]);
+  }
+}
+
+async function predictText(query) {
+  clearTimeout(predictionTimeout);
+  const predictions = sid('predictions');
+  
+  if (!query || query.length < 1) {
+    if (predictions) predictions.style.display = 'none';
+    return;
+  }
+  
+  predictionTimeout = setTimeout(async () => {
+    try {
+      const currentLang = lang;
+      const response = await fetch('/predict?q=' + encodeURIComponent(query) + '&limit=5&lang=' + currentLang);
+      const data = await response.json();
+      
+      if (data.ok && data.items && data.items.length > 0 && predictions) {
+        predictions.innerHTML = '';
+        data.items.forEach(item => {
+          const pill = document.createElement('div');
+          pill.className = 'pill';
+          pill.textContent = item;
+          pill.onclick = () => {
+            pick(item);
+            predictions.style.display = 'none';
+          };
+          pill.oncontextmenu = (e) => {
+            e.preventDefault();
+            playWord(item);
+          };
+          predictions.appendChild(pill);
+        });
+        predictions.style.display = 'flex';
+      } else {
+        if (predictions) predictions.style.display = 'none';
+      }
+    } catch (e) {
+      if (predictions) predictions.style.display = 'none';
+    }
+  }, 100); // Reduced timeout for more responsive predictions
+}
+
+function handleTTSKeydown(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    speak();
+  }
+  if (event.key === 'Escape') {
+    const predictions = sid('predictions');
+    if (predictions) predictions.style.display = 'none';
+  }
+}
+
+// Word learning functions
+async function learnWordsFromText(text) {
+  const words = text.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+  for (const word of words) {
+    try {
+      await fetch('/learn_word', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({word: word, language: lang})
+      });
+    } catch (e) {
+      console.log('Word learning error:', e);
+    }
+  }
+}
+
+async function learnWords(words) {
+  for (const word of words) {
+    try {
+      await fetch('/learn_word', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({word: word, language: lang})
+      });
+    } catch (e) {
+      console.log('Word learning error:', e);
+    }
+  }
+}
+
+async function playWord(word) {
+  try {
+    const response = await fetch('/play_word', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({word: word, language: lang})
+    });
+    const result = await response.json();
+    
+    if (result.ok) {
+      log('Played word: ' + word);
+    } else {
+      log('Word playback error: ' + result.msg);
+    }
+  } catch (e) {
+    log('Word playback error: ' + e.message);
+  }
+}
+
+// Speech functions
+async function speak() {
+  const textEl = sid('tts');
+  if (!textEl) return;
+  const text = textEl.value.trim();
+  if (!text) return;
+  
+  // Learn words from the text
+  await learnWordsFromText(text);
+  
+  log('Speaking...');
+  try {
+    const response = await fetch('/speak', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: text, language: lang})
+    });
+    const result = await response.json();
+    
+    if (result.ok) {
+      log('Speech: ' + result.msg);
+    } else {
+      log('Speech error: ' + result.msg);
+    }
+  } catch (e) {
+    log('Speak error: ' + e.message);
+  }
+}
+
+async function setLang(l) {
+  lang = l;
+  ['len', 'lro', 'lde'].forEach(id => {
+    const el = sid(id);
+    if (el) el.classList.remove('active');
+  });
+  const mapping = {'en': 'len', 'ro': 'lro', 'de': 'lde'};
+  const activeEl = sid(mapping[l]);
+  if (activeEl) activeEl.classList.add('active');
+  
+  const diacriticsEl = sid('diacritics');
+  if (diacriticsEl) {
+    diacriticsEl.style.display = (l === 'ro') ? 'flex' : 'none';
+  }
+  
+  try {
+    await fetch('/set_language', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({language: l})
+    });
+    log('Language: ' + l.toUpperCase());
+  } catch (e) {
+    log('Set language error: ' + e.message);
+  }
+}
+
+function insertDiacritic(char) {
+  const input = sid('tts');
+  if (!input) return;
+  
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  const text = input.value;
+  
+  input.value = text.substring(0, start) + char + text.substring(end);
+  input.setSelectionRange(start + 1, start + 1);
+  input.focus();
+  
+  predictText(input.value);
+  log('Inserted: ' + char);
+}
+
+// Motor control
+let moving = false;
+let currentDirection = null;
+let moveInterval = null;
+
+async function mcmd(dir, speed) {
+  const led = sid('mled');
+  if (led) led.className = 'led warn';
+  
+  try {
+    const response = await fetch('/motor/' + dir, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({speed: parseInt(speed)})
+    });
+    const result = await response.json();
+    
+    if (led) {
+      led.className = 'led ' + (result.ok ? 'ok' : 'err');
+    }
+  } catch (e) {
+    const led = sid('mled');
+    if (led) led.className = 'led err';
+  }
+}
+
+function go(direction) {
+  if (moving && currentDirection === direction) return;
+  moving = true;
+  currentDirection = direction;
+  const speedEl = sid('spd');
+  const speed = speedEl ? speedEl.value : 150;
+  mcmd(direction, speed);
+  log('Move ' + direction);
+  
+  // Clear any existing interval
+  if (moveInterval) clearInterval(moveInterval);
+  
+  // Set up periodic movement command to ensure motors keep moving
+  moveInterval = setInterval(() => {
+    if (moving && currentDirection === direction) {
+      const speedEl = sid('spd');
+      const speed = speedEl ? speedEl.value : 150;
+      mcmd(direction, speed);
+    }
+  }, 200); // Send command every 200ms to maintain movement
+}
+
+function stopM() {
+  if (!moving) return;
+  moving = false;
+  if (currentDirection) currentDirection = null;
+  const speedEl = sid('spd');
+  const speed = speedEl ? speedEl.value : 150;
+  mcmd('stop', speed);
+  
+  // Clear the movement interval
+  if (moveInterval) {
+    clearInterval(moveInterval);
+    moveInterval = null;
+  }
+  
+  log('Stop');
+}
+
+function estop() {
+  moving = false;
+  if (currentDirection) currentDirection = null;
+  const speedEl = sid('spd');
+  const speed = speedEl ? speedEl.value : 150;
+  mcmd('stop', speed);
+  
+  // Clear the movement interval
+  if (moveInterval) {
+    clearInterval(moveInterval);
+    moveInterval = null;
+  }
+  
+  log('EMERGENCY STOP');
+}
+
+// Motor test function
+async function testMotors() {
+  log('Testing motors...');
+  const led = sid('mled');
+  if (led) led.className = 'led warn';
+  
+  try {
+    const response = await fetch('/motor/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'}
+    });
+    const result = await response.json();
+    
+    if (result.ok) {
+      log('Motor test completed successfully');
+      if (led) led.className = 'led ok';
+    } else {
+      log('Motor test failed: ' + result.msg);
+      if (led) led.className = 'led err';
+    }
+  } catch (e) {
+    log('Motor test error: ' + e.message);
+    if (led) led.className = 'led err';
+  }
+}
+
+// MediaMTX Streaming functions
+async function waitForStreamReady() {
+  const maxAttempts = 10;
+  const delay = 500; // 500ms between attempts
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      // Check if HLS stream is available
+      const response = await fetch('http://172.25.216.108:8888/stream/index.m3u8', {method: 'HEAD'});
+      if (response.ok) {
+        log('Stream is ready');
+        return true;
+      }
+    } catch (e) {
+      // Stream not ready yet, continue waiting
+    }
+    
+    if (i < maxAttempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  log('Stream ready timeout, proceeding anyway');
+  return false;
+}
+
+async function startStream() {
+  log('Starting MediaMTX stream...');
+  debugLog('Starting stream...', 'info');
+  try {
+    // Check MediaMTX status before starting
+    const mediamtxRunning = await checkMediaMTXStatus();
+    if (!mediamtxRunning) {
+      throw new Error('MediaMTX server is not running');
+    }
+    
+    const response = await fetch('/api/stream/start', {method: 'POST'});
+    const result = await response.json();
+    
+    if (result.ok) {
+      streamActive = true;
+      updateAutoStreamStatus();
+      
+      // Wait for stream to be ready before connecting
+      log('Waiting for stream to initialize...');
+      await waitForStreamReady();
+      
+      await updateStreamPlayer();
+      log('Stream started successfully');
+      debugLog('Stream started successfully', 'success');
+    } else {
+      const error = new Error('Stream start failed: ' + result.msg);
+      handleMediaMTXError(error, 'stream start');
+      log('Stream start failed: ' + result.msg);
+      debugLog(`Stream start failed: ${result.msg}`, 'error');
+    }
+  } catch (e) {
+    handleMediaMTXError(e, 'stream start');
+    log('Stream start error: ' + e.message);
+    debugLog(`Stream start error: ${e.message}`, 'error');
+  }
+}
+
+async function stopStream() {
+  log('Stopping MediaMTX stream...');
+  try {
+    const response = await fetch('/api/stream/stop', {method: 'POST'});
+    const result = await response.json();
+    
+    if (result.ok) {
+      streamActive = false;
+      updateAutoStreamStatus();
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+      if (webrtcPlayer) {
+        webrtcPlayer.destroy();
+        webrtcPlayer = null;
+        vuMeterInitializedForCurrentConnection = false;
+      }
+      const video = sid('vid');
+      if (video) {
+        video.src = '';
+        video.load();
+      }
+      log('Stream stopped successfully');
+    } else {
+      log('Stream stop failed: ' + result.msg);
+    }
+  } catch (e) {
+    log('Stream stop error: ' + e.message);
+  }
+}
+
+function updateAutoStreamStatus() {
+  const statusEl = sid('auto-stream-status');
+  if (statusEl) {
+    statusEl.textContent = streamActive ? 'Auto-start: Stream Active' : 'Auto-start: Ready';
+    statusEl.style.color = streamActive ? '#4CAF50' : '#FFA500';
+  }
+}
+
+async function updateStreamPlayer() {
+  const video = sid('vid');
+  const webrtcUrl = 'http://172.25.216.108:8889/stream';
+  
+  if (!video) return;
+  
+  // Clean up existing players
+  if (hls) {
+    hls.destroy();
+    hls = null;
+  }
+  if (webrtcPlayer) {
+    webrtcPlayer.destroy();
+    webrtcPlayer = null;
+    vuMeterInitializedForCurrentConnection = false;
+  }
+  
+  // Auto-start stream if not active
+  if (!streamActive) {
+    log('Auto-starting stream for WebRTC connection...');
+    debugLog('Auto-starting stream...', 'info');
+    try {
+      await startStream();
+    } catch (e) {
+      log('Auto-start failed: ' + e.message);
+      debugLog(`Auto-start failed: ${e.message}`, 'error');
+      return;
+    }
+  }
+  
+  // Use WebRTC as primary stream (real-time, low latency)
+  console.log('[UpdateStreamPlayer] Checking WebRTC availability...');
+  console.log('[UpdateStreamPlayer] WebRTCPlayer available:', typeof WebRTCPlayer !== 'undefined');
+  console.log('[UpdateStreamPlayer] RTCPeerConnection available:', typeof RTCPeerConnection !== 'undefined');
+  
+  if (typeof WebRTCPlayer !== 'undefined' && typeof RTCPeerConnection !== 'undefined') {
+    try {
+      console.log('[UpdateStreamPlayer] Initializing WebRTC player as primary stream...');
+      webrtcPlayer = new WebRTCPlayer({
+        video: video,
+        url: webrtcUrl,
+        webrtc: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
+      });
+      
+      webrtcPlayer.on('error', (error) => {
+        console.error('WebRTC error:', error);
+        console.log('WebRTC connection failed, retrying...');
+        debugLog(`WebRTC error: ${error.message || error}`, 'error');
+        debugLog('WebRTC connection failed, retrying...', 'warning');
+        handleMediaMTXError(error, 'WebRTC connection');
+        fallbackToHLS();
+      });
+      
+      webrtcPlayer.on('play', () => {
+        console.log('WebRTC stream started successfully');
+        log('WebRTC stream connected (low latency)');
+        debugLog('WebRTC stream connected successfully', 'success');
+        
+        // Initialize VU meter now that WebRTC stream is connected
+        if (!vuMeterInitializedForCurrentConnection) {
+          console.log('[VU Meter] WebRTC stream connected, checking for audio tracks...');
+          vuMeterInitializedForCurrentConnection = true;
+          setTimeout(() => {
+            const video = document.getElementById('vid');
+            if (video && video.srcObject && video.srcObject.getAudioTracks().length > 0) {
+              console.log('[VU Meter] Audio tracks available, initializing VU meter...');
+              // Add a small delay to ensure the MediaStream is fully established
+              setTimeout(() => {
+                initVUMeter();
+              }, 500);
+            } else {
+              console.log('[VU Meter] No audio tracks available yet, retrying in 2 seconds...');
+              // Retry once more after 2 seconds
+              setTimeout(() => {
+                const video = document.getElementById('vid');
+                if (video && video.srcObject && video.srcObject.getAudioTracks().length > 0) {
+                  console.log('[VU Meter] Audio tracks now available, initializing VU meter...');
+                  setTimeout(() => {
+                    initVUMeter();
+                  }, 500);
+                } else {
+                  console.log('[VU Meter] No audio tracks available after retry, VU meter will not be initialized');
+                }
+              }, 2000);
+            }
+          }, 1500); // Longer delay to ensure stream is fully ready
+        } else {
+          console.log('[VU Meter] WebRTC stream connected, but VU meter already initialized for this connection');
+        }
+      });
+      
+      webrtcPlayer.on('disconnect', () => {
+        console.log('WebRTC disconnected, attempting reconnect...');
+        debugLog('WebRTC disconnected, attempting reconnect...', 'warning');
+        
+        // Stop VU meter when WebRTC disconnects
+        console.log('[VU Meter] WebRTC disconnected, stopping VU meter...');
+        if (vuAnalyser && vuAnalyser.context) {
+          try {
+            if (vuAnalyser.context.state !== 'closed') {
+              vuAnalyser.context.close();
+            }
+          } catch (e) {
+            console.log('[VU Meter] Error closing audio context on disconnect:', e);
+          }
+        }
+        vuMeterActive = false;
+        vuAnalyser = null;
+        vuMicrophone = null;
+        vuMeterInitializedForCurrentConnection = false; // Reset flag for next connection
+        
+        // Immediate reconnection attempt for better reliability
+        setTimeout(() => {
+          updateStreamPlayer().catch(e => console.error('Immediate reconnect error:', e));
+        }, 1000);
+      });
+      
+    } catch (error) {
+      console.error('[UpdateStreamPlayer] WebRTC initialization failed:', error);
+      console.error('[UpdateStreamPlayer] Error details:', error.message, error.stack);
+      debugLog(`WebRTC initialization failed: ${error.message}`, 'error');
+      handleMediaMTXError(error, 'WebRTC initialization');
+      fallbackToHLS();
+    }
+  } else {
+    console.log('[UpdateStreamPlayer] WebRTC not supported in this browser');
+    console.log('[UpdateStreamPlayer] WebRTCPlayer support:', typeof WebRTCPlayer !== 'undefined');
+    console.log('[UpdateStreamPlayer] RTCPeerConnection support:', typeof RTCPeerConnection !== 'undefined');
+    debugLog('WebRTC not supported in this browser', 'error');
+    fallbackToHLS();
+  }
+}
+
+// Manual WebRTC initialization for debugging
+function forceWebRTCInit() {
+  console.log('[ForceWebRTC] Forcing WebRTC player initialization...');
+  const video = sid('vid');
+  const webrtcUrl = 'http://172.25.216.108:8889/stream';
+  
+  if (!video) {
+    console.error('[ForceWebRTC] Video element not found');
+    return;
+  }
+  
+  // Clear existing players
+  if (webrtcPlayer) {
+    webrtcPlayer.destroy();
+    webrtcPlayer = null;
+    vuMeterInitializedForCurrentConnection = false;
+  }
+  
+  // Clear video element
+  video.srcObject = null;
+  video.src = '';
+  video.load();
+  
+  // Force WebRTC initialization
+  try {
+    console.log('[ForceWebRTC] Creating WebRTC player...');
+    webrtcPlayer = new WebRTCPlayer({
+      video: video,
+      url: webrtcUrl,
+      webrtc: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    });
+    
+    webrtcPlayer.on('play', () => {
+      console.log('[ForceWebRTC] WebRTC stream started successfully');
+    });
+    
+    webrtcPlayer.on('error', (error) => {
+      console.error('[ForceWebRTC] WebRTC error:', error);
+    });
+    
+    console.log('[ForceWebRTC] WebRTC player created successfully');
+  } catch (error) {
+    console.error('[ForceWebRTC] Failed to create WebRTC player:', error);
+  }
+}
+
+function fallbackToHLS() {
+  // HLS fallback disabled - WebRTC only mode
+  console.log('HLS fallback disabled - WebRTC only mode');
+  debugLog('HLS fallback disabled - WebRTC only mode', 'info');
+  
+  // Retry WebRTC connection after delay
+  setTimeout(() => {
+    console.log('Retrying WebRTC connection...');
+    updateStreamPlayer().catch(e => console.error('WebRTC retry error:', e));
+  }, 5000);
+}
+
+async function refreshStream() {
+  console.log('[Refresh] Starting comprehensive stream refresh...');
+  log('Refreshing stream with full cleanup...');
+  
+  try {
+    // Call the backend API to refresh the stream
+    console.log('[Refresh] Calling backend stream refresh API...');
+    const response = await fetch('/api/stream/refresh', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    console.log('[Refresh] Backend refresh result:', result);
+    
+    if (result.success) {
+      log('Stream refreshed: ' + result.message);
+      
+      // Force cleanup of all players
+      if (hls) {
+        console.log('[Refresh] Destroying HLS player...');
+        hls.destroy();
+        hls = null;
+      }
+      if (webrtcPlayer) {
+        console.log('[Refresh] Destroying WebRTC player...');
+        webrtcPlayer.destroy();
+        webrtcPlayer = null;
+        
+        // Reset VU meter flag and clean up so it can be reinitialized for the new connection
+        console.log('[VU Meter] WebRTC player destroyed, cleaning up VU meter...');
+        if (vuAnalyser && vuAnalyser.context) {
+          try {
+            if (vuAnalyser.context.state !== 'closed') {
+              vuAnalyser.context.close();
+            }
+          } catch (e) {
+            console.log('[VU Meter] Error closing audio context during refresh:', e);
+          }
+        }
+        vuMeterActive = false;
+        vuAnalyser = null;
+        vuMicrophone = null;
+        vuMeterInitializedForCurrentConnection = false;
+        
+        // Note: Don't clear video.srcObject here as it would break the stream
+        // The VU meter initialization will handle existing connections
+      }
+      
+      // Clear video element
+      const video = sid('vid');
+      if (video) {
+        console.log('[Refresh] Clearing video element...');
+        video.srcObject = null;
+        video.src = '';
+        video.load();
+      }
+      
+      // VU meter will be reinitialized when WebRTC reconnects
+      
+      // Wait for stream to be ready, then reinitialize player
+      setTimeout(() => {
+        console.log('[Refresh] Reinitializing stream player...');
+        updateStreamPlayer().catch(e => {
+          console.error('[Refresh] Stream refresh error:', e);
+          log('Stream refresh failed: ' + e.message);
+        });
+      }, 3000);
+      
+    } else {
+      log('Stream refresh failed: ' + result.message);
+      console.error('[Refresh] Backend refresh failed:', result);
+    }
+    
+  } catch (error) {
+    console.error('[Refresh] Refresh API call failed:', error);
+    log('Stream refresh failed: ' + error.message);
+    
+    // Fallback to frontend-only refresh
+    console.log('[Refresh] Falling back to frontend-only refresh...');
+    if (hls) {
+      hls.destroy();
+      hls = null;
+    }
+    if (webrtcPlayer) {
+      webrtcPlayer.destroy();
+      webrtcPlayer = null;
+    }
+    
+    const video = sid('vid');
+    if (video) {
+      video.srcObject = null;
+      video.src = '';
+      video.load();
+    }
+    
+    setTimeout(() => {
+      updateStreamPlayer().catch(e => console.error('[Refresh] Fallback error:', e));
+    }, 1000);
+  }
+}
+
+// Camera functions
+async function setRes(resolution) {
+  log('Set resolution ' + resolution + '...');
+  try {
+    // Use MediaMTX Control API for dynamic resolution change
+    const response = await fetch('/api/resolution', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({resolution: resolution})
+    });
+    const result = await response.json();
+    
+    if (result.success) {
+      // Update resolution display
+      const resDisplay = sid('resolution-display');
+      if (resDisplay) {
+        resDisplay.textContent = resolution;
+      }
+      
+      // Update active button styling
+      ['r320p', 'r480p', 'r720p'].forEach(id => {
+        const el = sid(id);
+        if (el) el.classList.remove('active');
+      });
+      const activeEl = sid('r' + resolution);
+      if (activeEl) activeEl.classList.add('active');
+      
+      log('Resolution changed to ' + resolution);
+      
+      // Preserve the configured FPS during resolution changes
+      debugLog(`Resolution change preserving FPS: ${configuredFPS}`, 'info');
+      
+      // Use MediaMTX Control API to update stream configuration without restart
+      try {
+        await updateStreamConfiguration('resolution', resolution);
+        log('Stream configuration updated dynamically');
+      } catch (configError) {
+        log('Dynamic config update failed, falling back to restart: ' + configError.message);
+        // Fallback to restart if Control API fails
+        await stopStream();
+        setTimeout(async () => {
+          await startStream();
+        }, 3000);
+      }
+    } else {
+      log('Resolution change failed: ' + result.message);
+    }
+  } catch (e) {
+    log('Set resolution error: ' + e.message);
+  }
+  
+  // Ensure FPS doesn't revert after resolution change
+  setTimeout(() => {
+    const fpsDisplay = sid('fps');
+    if (fpsDisplay && configuredFPS) {
+      fpsDisplay.textContent = configuredFPS;
+      debugLog(`Post-resolution FPS preservation: ${configuredFPS}`, 'info');
+    }
+  }, 2000);
+}
+
+async function setFPS(fps) {
+  log('Set framerate ' + fps + '...');
+  
+  // Show immediate UI feedback
+  configuredFPS = fps;
+  const fpsDisplay = sid('fps');
+  if (fpsDisplay) fpsDisplay.textContent = fps;
+  
+  // Update active button styling immediately
+  ['fps10', 'fps15', 'fps20'].forEach(id => {
+    const el = sid(id);
+    if (el) el.classList.remove('active');
+  });
+  const activeEl = sid('fps' + fps);
+  if (activeEl) activeEl.classList.add('active');
+  
+  try {
+    // Use the smooth framerate update API for better UX
+    const response = await fetch('/api/stream/framerate-smooth', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({framerate: parseInt(fps)})
+    });
+    const result = await response.json();
+    
+    if (result.success) {
+      log('✅ Framerate updated smoothly to ' + fps);
+    } else {
+      log('⚠️ Smooth update failed: ' + result.message);
+      // Fallback to the regular framerate API
+      const fallbackResponse = await fetch('/api/framerate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({framerate: parseInt(fps)})
+      });
+      const fallbackResult = await fallbackResponse.json();
+      
+      if (fallbackResult.success) {
+        log('Fallback framerate update successful');
+      } else {
+        log('❌ Framerate change failed: ' + fallbackResult.message);
+      }
+    }
+  } catch (e) {
+    log('❌ Framerate change error: ' + e.message);
+  }
+  
+  // Schedule a forced update of FPS display to prevent reversion
+  setTimeout(() => {
+    const fpsDisplay = sid('fps');
+    if (fpsDisplay && configuredFPS) {
+      fpsDisplay.textContent = configuredFPS;
+      debugLog(`Forced FPS display update to prevent reversion: ${configuredFPS}`, 'info');
+    }
+  }, 1000);
+}
+
+// MediaMTX Control API functions
+async function updateStreamConfiguration(parameter, value) {
+  try {
+    const response = await fetch('/api/mediamtx/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        parameter: parameter,
+        value: value,
+        stream: 'stream'
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Control API request failed: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || 'Configuration update failed');
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('MediaMTX Control API error:', error);
+    throw error;
+  }
+}
+
+// Enhanced error handling for MediaMTX connections
+async function handleMediaMTXError(error, context) {
+  console.error(`MediaMTX error in ${context}:`, error);
+  
+  // Log error to debug system
+  debugLog(`MediaMTX ${context} error: ${error.message}`, 'error');
+  
+  // Attempt to recover based on error type
+  if (error.message.includes('connection') || error.message.includes('network')) {
+    debugLog('Attempting to reconnect to MediaMTX...', 'info');
+    setTimeout(() => {
+      updateStreamPlayer().catch(e => console.error('WebRTC reconnect error:', e));
+    }, 3000);
+  } else if (error.message.includes('configuration')) {
+    debugLog('Configuration error detected, checking MediaMTX status...', 'warning');
+    await checkMediaMTXStatus();
+  }
+  
+  // Update UI to show error state
+  const statusEl = sid('stream-status');
+  if (statusEl) {
+    statusEl.textContent = 'Error';
+    statusEl.style.color = '#f00';
+  }
+}
+
+// Check MediaMTX server status
+async function checkMediaMTXStatus() {
+  try {
+    const response = await fetch('/api/mediamtx/status');
+    const status = await response.json();
+    
+    if (status.status === 'running') {
+      debugLog('MediaMTX server: Running', 'success');
+      return true;
+    } else {
+      debugLog('MediaMTX server: Stopped', 'error');
+      return false;
+    }
+  } catch (error) {
+    debugLog(`MediaMTX status check failed: ${error.message}`, 'error');
+    return false;
+  }
+}
+
+// Manual video refresh function
+function refreshVideo() {
+  const vid = sid('vid');
+  if (vid) {
+    const src = vid.src.split('?')[0]; // Remove any existing query parameters
+    vid.src = '';
+    vid.src = src + '?refresh=' + Date.now();
+    log('Video stream refreshed');
+  }
+}
+
+// System functions
+async function statusAll() {
+  try {
+    const response = await fetch('/api/status');
+    const status = await response.json();
+    console.log('[StatusAll] System status:', status);
+    
+    // Always update visual status bar based on current status
+    const statusEl = sid('stream-status');
+    if (statusEl) {
+      if (status.streaming) {
+        statusEl.textContent = 'Active';
+        statusEl.style.color = '#0f0';
+      } else {
+        statusEl.textContent = 'Stopped';
+        statusEl.style.color = '#f00';
+      }
+    }
+    
+    // Update stream status
+    if (status.streaming !== streamActive) {
+      streamActive = status.streaming;
+      updateAutoStreamStatus();
+      
+      // Initialize player when stream becomes active
+      if (streamActive) {
+        log('Stream detected as active, initializing player...');
+        updateStreamPlayer().catch(e => console.error('Auto-initialization error:', e));
+      }
+    }
+    
+    // Update resolution display
+    const resDisplay = sid('resolution-display');
+    if (resDisplay && status.resolution) {
+      resDisplay.textContent = status.resolution;
+    }
+    
+    // Update FPS display (don't override user-selected FPS if status is stale)
+    const fpsDisplay = sid('fps');
+    if (fpsDisplay) {
+      // Only update FPS display if we don't have a user-configured FPS or if the API framerate matches our configured FPS
+      if (!configuredFPS || configuredFPS === status.framerate || !streamActive) {
+        fpsDisplay.textContent = status.framerate;
+        configuredFPS = status.framerate; // Update configured FPS from API only when not user-set
+      } else {
+        // Keep showing user-configured FPS even if API hasn't updated yet
+        fpsDisplay.textContent = configuredFPS;
+      }
+    }
+    
+    // Update FPS slider
+    const fpsSlider = sid('fpsSlider');
+    const fpsValue = sid('fpsValue');
+    if (fpsSlider && status.framerate) {
+      fpsSlider.value = status.framerate;
+    }
+    if (fpsValue && status.framerate) {
+      fpsValue.textContent = status.framerate;
+    }
+    
+    // Update active resolution button
+    if (status.resolution) {
+      ['r320p', 'r480p', 'r720p'].forEach(id => {
+        const el = sid(id);
+        if (el) el.classList.remove('active');
+      });
+      const activeEl = sid('r' + status.resolution);
+      if (activeEl) activeEl.classList.add('active');
+    }
+    
+    // Update active FPS button
+    if (status.framerate) {
+      ['fps10', 'fps15', 'fps20'].forEach(id => {
+        const el = sid(id);
+        if (el) el.classList.remove('active');
+      });
+      const activeEl = sid('fps' + status.framerate);
+      if (activeEl) activeEl.classList.add('active');
+    }
+    
+    const led = sid('mled');
+    if (led) led.className = 'led ok'; // Assume motors are working for now
+    
+    log('System status updated');
+  } catch (e) {
+    log('Status error: ' + e.message);
+  }
+}
+
+// Recording functions
+let isRecording = false;
+
+async function toggleRecording() {
+  if (isRecording) {
+    await recStop();
+  } else {
+    await recStart();
+  }
+}
+
+async function recStart() {
+  log('Recording start...');
+  try {
+    isRecording = true;
+    const recordBtn = sid('recordBtn');
+    if (recordBtn) {
+      recordBtn.textContent = 'Stop Rec';
+      recordBtn.style.backgroundColor = '#ff4444';
+      recordBtn.style.color = '#fff';
+    }
+    
+    recordingActive = true;
+    
+    const response = await fetch('/api/recording/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({audio_bitrate: '48k', video_bitrate: '200k'})
+    });
+    const result = await response.json();
+    
+    if (result.success) {
+      let msg = '🎬 Recording started -> ' + result.filename;
+      log(msg);
+    } else {
+      log('❌ Recording error: ' + result.message);
+      isRecording = false;
+      if (recordBtn) {
+        recordBtn.textContent = 'Start Rec';
+        recordBtn.style.backgroundColor = '';
+        recordBtn.style.color = '';
+      }
+    }
+  } catch (e) {
+    log('Recording start error: ' + e.message);
+    recordingActive = false;
+    isRecording = false;
+    const recordBtn = sid('recordBtn');
+    if (recordBtn) {
+      recordBtn.textContent = 'Start Rec';
+      recordBtn.style.backgroundColor = '';
+      recordBtn.style.color = '';
+    }
+  }
+}
+
+async function recStop() {
+  log('Recording stop...');
+  try {
+    const response = await fetch('/api/recording/stop', {method: 'POST'});
+    const result = await response.json();
+    
+    isRecording = false;
+    const recordBtn = sid('recordBtn');
+    if (recordBtn) {
+      recordBtn.textContent = 'Start Rec';
+      recordBtn.style.backgroundColor = '';
+      recordBtn.style.color = '';
+    }
+    
+    recordingActive = false;
+    
+    log(result.success ? ('✅ Recording stopped. File: ' + (result.filename || 'n/a')) : ('❌ Stop error: ' + result.message));
+  } catch (e) {
+    log('Recording stop error: ' + e.message);
+  }
+}
+
+// Snapshot function
+async function snap() {
+  log('Taking snapshot...');
+  try {
+    const response = await fetch('/api/snapshot', {method: 'POST'});
+    const result = await response.json();
+    
+    if (result.success) {
+      log('✅ Snapshot saved: ' + result.filename);
+    } else {
+      log('❌ Snapshot error: ' + result.message);
+    }
+  } catch (e) {
+    log('❌ Snapshot error: ' + e.message);
+  }
+}
+
+// Battery monitoring
+async function updateBattery() {
+  try {
+    const response = await fetch('/battery');
+    const battery = await response.json();
+    
+    // Update battery percentage display in video info bar
+    const batteryDisplay = sid('battery-display');
+    if (batteryDisplay) {
+      batteryDisplay.textContent = battery.percentage.toFixed(0) + '%';
+      // Add color coding based on battery level
+      if (battery.percentage > 50) {
+        batteryDisplay.style.color = '#0f0'; // Green
+      } else if (battery.percentage > 20) {
+        batteryDisplay.style.color = '#ff0'; // Yellow
+      } else {
+        batteryDisplay.style.color = '#f00'; // Red
+      }
+    }
+    
+    // Update voltage display in video info bar
+    const voltageDisplay = sid('voltage-display');
+    if (voltageDisplay && battery.voltage) {
+      voltageDisplay.textContent = '(' + battery.voltage.toFixed(1) + 'V)';
+      // Add color coding based on voltage level
+      if (battery.voltage > 11.5) {
+        voltageDisplay.style.color = '#0f0'; // Green
+      } else if (battery.voltage > 10.5) {
+        voltageDisplay.style.color = '#ff0'; // Yellow
+      } else {
+        voltageDisplay.style.color = '#f00'; // Red
+      }
+    }
+    
+    // Update battery bar (if it exists in motor panel - for backward compatibility)
+    const fill = sid('batf');
+    const percentage = sid('batp');
+    
+    if (fill && percentage) {
+      fill.style.width = battery.percentage + '%';
+      percentage.textContent = battery.percentage.toFixed(0) + '%';
+      
+      if (battery.percentage > 50) {
+        fill.style.background = '#0f0';
+      } else if (battery.percentage > 20) {
+        fill.style.background = '#ff0';
+      } else {
+        fill.style.background = '#f00';
+      }
+    }
+  } catch (e) {
+    console.error('Battery update error:', e);
+  }
+}
+
+// Audio functions
+async function toggleMicrophone() {
+  try {
+    if (audioActive) {
+      audioActive = false;
+      vuMeterActive = false;
+      if (socket) {
+        socket.emit('stop_simple_audio');
+      }
+      updateMicStatus('Audio stopped');
+    } else {
+      updateMicStatus('Starting audio...');
+      
+      if (!audioContext) {
+        initWebAudio();
+      }
+      
+      if (!socket) {
+        initWebSocket();
+      }
+      
+      if (socket) {
+        socket.emit('start_simple_audio');
+        audioActive = true;
+        vuMeterActive = true;
+        updateMicStatus('Audio streaming active');
+      } else {
+        updateMicStatus('Failed to start audio');
+      }
+    }
+    
+    updateMicButton();
+  } catch (e) {
+    updateMicStatus('Error: ' + e.message);
+    audioActive = false;
+    updateMicButton();
+  }
+}
+
+function updateMicButton() {
+  const btn = sid('micbtn');
+  if (btn) {
+    if (audioActive) {
+      btn.textContent = 'Stop Audio';
+      btn.style.background = '#ff4444';
+      btn.style.color = '#fff';
+    } else {
+      btn.textContent = 'Start Audio';
+      btn.style.background = '';
+      btn.style.color = '';
+    }
+  }
+}
+
+function updateStreamButtons() {
+  // Update stream control buttons based on current status
+  const startBtn = sid('startbtn');
+  const stopBtn = sid('stopbtn');
+  
+  if (startBtn) {
+    startBtn.disabled = streaming;
+    startBtn.textContent = streaming ? 'Streaming...' : 'Start Stream';
+  }
+  
+  if (stopBtn) {
+    stopBtn.disabled = !streaming;
+    stopBtn.textContent = streaming ? 'Stop Stream' : 'Stopped';
+  }
+}
+
+function updateMicStatus(status) {
+  const statusEl = sid('mic-status');
+  if (statusEl) {
+    statusEl.textContent = status;
+  }
+}
+
+
+
+// Microphone test functions
+async function testMic() {
+  log('Testing microphone...');
+  try {
+    const response = await fetch('/mic_test');
+    if (response.ok) {
+      log('Mic test completed - downloading file');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mic_test.wav';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } else {
+      log('Mic test failed');
+    }
+  } catch (e) {
+    log('Mic test error: ' + e.message);
+  }
+}
+
+function testAudioTone() {
+  log('Testing audio tone...');
+  if (socket) {
+    socket.emit('test_audio_tone');
+    updateMicStatus('Playing test tone...');
+  } else {
+    updateMicStatus('WebSocket not connected');
+  }
+}
+
+// Volume control
+async function setVol(volume) {
+  const volEl = sid('volv');
+  if (volEl) volEl.textContent = volume + '%';
+  try {
+    await fetch('/audio/set_volume', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({type: 'speaker', volume: parseInt(volume)})
+    });
+  } catch (e) {
+    log('Set volume error: ' + e.message);
+  }
+}
+
+async function toggleMute() {
+  muted = !muted;
+  const btn = sid('mutebtn');
+  const slider = sid('vol');
+  
+  if (btn && slider) {
+    if (muted) {
+      btn.textContent = 'Muted';
+      btn.style.background = '#f00';
+      slider.disabled = true;
+      try {
+        await fetch('/audio/set_volume', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({type: 'speaker', mute: true})
+        });
+      } catch (e) {
+        log('Mute error: ' + e.message);
+      }
+    } else {
+      btn.textContent = 'Sound';
+      btn.style.background = '';
+      slider.disabled = false;
+      try {
+        await fetch('/audio/set_volume', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({type: 'speaker', volume: parseInt(slider.value), mute: false})
+        });
+      } catch (e) {
+        log('Unmute error: ' + e.message);
+      }
+    }
+  }
+}
+
+// Sound effects
+async function beep(soundId) {
+  try {
+    const response = await fetch('/play_sound/' + soundId, {method: 'POST'});
+    const result = await response.json();
+    log(result.ok ? result.msg : ('Sound error: ' + result.msg));
+  } catch (e) {
+    log('Beep error: ' + e.message);
+  }
+}
+
+// Audio quality controls - SIMPLIFIED
+// All audio processing removed for maximum reliability
+// Dynamic bitrate adjustment handled by backend
+
+// System control
+async function rebootSystem() {
+  if (!confirm('REBOOT SYSTEM? This will restart the entire device. Are you sure?')) return;
+  log('Initiating system reboot...');
+  try {
+    const response = await fetch('/system/reboot', {method: 'POST'});
+    const result = await response.json();
+    if (result.ok) {
+      log('Reboot command sent successfully');
+      setTimeout(() => log('System should be rebooting now...'), 3000);
+    } else {
+      log('Reboot failed: ' + result.msg);
+    }
+  } catch (e) {
+    log('Reboot request failed: ' + e.message);
+  }
+}
+
+// MediaMTX Metrics Monitoring
+let mediamtxMetrics = {
+  cpuUsage: 0,
+  memoryUsage: 0,
+  activeConnections: 0,
+  streamBitrate: 0,
+  lastUpdate: Date.now()
+};
+
+// MediaMTX Hooks System
+let mediamtxHooks = {
+  onClientConnect: null,
+  onClientDisconnect: null,
+  onStreamStart: null,
+  onStreamStop: null
+};
+
+// Smart Debug Module
+let debugLogs = [];
+let debugSessionId = Date.now();
+
+function debugLog(message, type = 'info') {
+  const timestamp = new Date().toLocaleTimeString();
+  const logEntry = {
+    timestamp,
+    type,
+    message,
+    sessionId: debugSessionId
+  };
+  debugLogs.push(logEntry);
+  
+  // Keep only last 100 entries
+  if (debugLogs.length > 100) {
+    debugLogs.shift();
+  }
+  
+  // Update debug output display
+  updateDebugOutput();
+  
+  // Also log to console
+  console.log(`[DEBUG ${type.toUpperCase()}] ${message}`);
+}
+
+function updateDebugOutput() {
+  const output = sid('debug-output');
+  if (!output) return;
+  
+  const recentLogs = debugLogs.slice(-10); // Show last 10 entries
+  output.innerHTML = recentLogs.map(entry => {
+    const color = entry.type === 'error' ? '#ff4444' : 
+                  entry.type === 'warning' ? '#ffaa00' : 
+                  entry.type === 'success' ? '#44ff44' : '#cccccc';
+    return `<div style="color:${color}">[${entry.timestamp}] ${entry.message}</div>`;
+  }).join('');
+  
+  // Auto-scroll to bottom
+  output.scrollTop = output.scrollHeight;
+}
+
+async function runSystemDiagnostics() {
+  debugLog('Starting comprehensive system diagnostics...', 'info');
+  
+  try {
+    // Check API connectivity
+    debugLog('Checking API connectivity...', 'info');
+    const apiResponse = await fetch('/api/status');
+    if (apiResponse.ok) {
+      const apiData = await apiResponse.json();
+      debugLog(`API Status: OK - Resolution: ${apiData.resolution}, FPS: ${apiData.framerate}`, 'success');
+    } else {
+      debugLog(`API Status: FAILED - HTTP ${apiResponse.status}`, 'error');
+    }
+    
+    // Check camera status
+    await checkCameraStatus();
+    
+    // Check audio status
+    await checkAudioStatus();
+    
+    // Check network status
+    await checkNetworkStatus();
+    
+    // Check stream status
+    await checkStreamStatus();
+    
+    debugLog('System diagnostics completed', 'success');
+    
+  } catch (error) {
+    debugLog(`Diagnostics failed: ${error.message}`, 'error');
+  }
+}
+
+async function checkCameraStatus() {
+  debugLog('Checking camera status...', 'info');
+  
+  try {
+    const response = await fetch('/api/status');
+    const data = await response.json();
+    
+    if (data.camera_device && data.camera_device !== 'unknown') {
+      debugLog(`Camera: ${data.camera_device} - OK`, 'success');
+    } else if (data.running && data.streaming) {
+      debugLog('Camera: Working (FFmpeg active) - OK', 'success');
+      debugLog('Note: Camera device not reported by API but streaming is active', 'info');
+    } else {
+      debugLog('Camera: No device detected - CRITICAL', 'error');
+      debugLog('Possible causes: Device busy, permissions, or hardware issue', 'warning');
+      debugLog('Try: sudo chmod 666 /dev/video* or check camera connections', 'info');
+    }
+    
+    // Check available resolutions
+    if (data.available_resolutions) {
+      debugLog(`Available resolutions: ${data.available_resolutions.join(', ')}`, 'info');
+    }
+    
+    // Check FPS range
+    if (data.fps_range) {
+      debugLog(`FPS range: ${data.fps_range[0]}-${data.fps_range[1]}`, 'info');
+    }
+    
+    // Check if camera is running
+    if (data.running) {
+      debugLog('Camera process: Running', 'success');
+    } else {
+      debugLog('Camera process: Stopped - Start stream to activate', 'warning');
+    }
+    
+  } catch (error) {
+    debugLog(`Camera check failed: ${error.message}`, 'error');
+  }
+}
+
+async function checkAudioStatus() {
+  debugLog('Checking audio status...', 'info');
+  
+  try {
+    const response = await fetch('/api/status');
+    const data = await response.json();
+    
+    if (data.mic_device) {
+      debugLog(`Microphone: ${data.mic_device} - OK`, 'success');
+    } else {
+      debugLog('Microphone: No device detected - WARNING', 'warning');
+    }
+    
+    // Check WebRTC audio support
+    if (typeof RTCPeerConnection !== 'undefined') {
+      debugLog('WebRTC audio: Supported', 'success');
+    } else {
+      debugLog('WebRTC audio: Not supported', 'error');
+    }
+    
+    // Check Web Audio API
+    if (typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined') {
+      debugLog('Web Audio API: Supported', 'success');
+    } else {
+      debugLog('Web Audio API: Not supported', 'error');
+    }
+    
+  } catch (error) {
+    debugLog(`Audio check failed: ${error.message}`, 'error');
+  }
+}
+
+async function checkNetworkStatus() {
+  debugLog('Checking network status...', 'info');
+  
+  try {
+    // Check WebRTC connectivity (use GET instead of HEAD)
+    const webrtcUrl = 'http://172.25.216.108:8889/stream';
+    try {
+      const webrtcResponse = await fetch(webrtcUrl, { method: 'GET' });
+      if (webrtcResponse.ok) {
+        debugLog('WebRTC endpoint: Reachable', 'success');
+      } else {
+        debugLog(`WebRTC endpoint: HTTP ${webrtcResponse.status}`, 'warning');
+      }
+    } catch (e) {
+      debugLog('WebRTC endpoint: Connection failed', 'warning');
+    }
+    
+    // Check HLS connectivity (use GET instead of HEAD)
+    const hlsUrl = 'http://172.25.216.108:8888/stream/index.m3u8';
+    try {
+      const hlsResponse = await fetch(hlsUrl, { method: 'GET' });
+      if (hlsResponse.ok) {
+        debugLog('HLS endpoint: Reachable', 'success');
+      } else {
+        debugLog(`HLS endpoint: HTTP ${hlsResponse.status}`, 'warning');
+      }
+    } catch (e) {
+      debugLog('HLS endpoint: Connection failed', 'warning');
+    }
+    
+    // Check connection quality
+    const startTime = performance.now();
+    await fetch('/api/status');
+    const endTime = performance.now();
+    const latency = Math.round(endTime - startTime);
+    
+    if (latency < 100) {
+      debugLog(`Network latency: ${latency}ms - Excellent`, 'success');
+    } else if (latency < 300) {
+      debugLog(`Network latency: ${latency}ms - Good`, 'info');
+    } else {
+      debugLog(`Network latency: ${latency}ms - Poor`, 'warning');
+    }
+    
+  } catch (error) {
+    debugLog(`Network check failed: ${error.message}`, 'error');
+  }
+}
+
+async function checkStreamStatus() {
+  debugLog('Checking stream status...', 'info');
+  
+  try {
+    const response = await fetch('/api/status');
+    const data = await response.json();
+    
+    if (data.streaming) {
+      debugLog('Stream: Active', 'success');
+    } else {
+      debugLog('Stream: Inactive - Start stream to begin', 'warning');
+    }
+    
+    if (data.running) {
+      debugLog('Camera: Running', 'success');
+    } else {
+      debugLog('Camera: Stopped - Camera not capturing', 'error');
+      debugLog('This explains HLS muxer create/destroy cycles', 'warning');
+    }
+    
+    if (data.recording) {
+      debugLog('Recording: Active', 'info');
+    } else {
+      debugLog('Recording: Inactive', 'info');
+    }
+    
+    // Check WebRTC player status
+    if (webrtcPlayer && webrtcPlayer.pc) {
+      const connectionState = webrtcPlayer.pc.connectionState;
+      debugLog(`WebRTC connection: ${connectionState}`, 
+               connectionState === 'connected' ? 'success' : 'warning');
+      
+      if (connectionState === 'failed') {
+        debugLog('WebRTC failed - Check SDP negotiation', 'error');
+      }
+    } else {
+      debugLog('WebRTC player: Not initialized', 'warning');
+    }
+    
+    // Check HLS player status
+    if (hls) {
+      debugLog('HLS player: Active', 'info');
+    } else {
+      debugLog('HLS player: Not active', 'info');
+    }
+    
+    // Check for common issues
+    if (!data.running && !data.streaming) {
+      debugLog('ISSUE: Camera not running and stream not active', 'error');
+      debugLog('SOLUTION: Click "Start Stream" button', 'info');
+    }
+    
+  } catch (error) {
+    debugLog(`Stream check failed: ${error.message}`, 'error');
+  }
+}
+
+function exportDebugLog() {
+  debugLog('Exporting debug log...', 'info');
+  
+  const logData = {
+    sessionId: debugSessionId,
+    timestamp: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+    logs: debugLogs
+  };
+  
+  const blob = new Blob([JSON.stringify(logData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `avatar-debug-${debugSessionId}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  debugLog('Debug log exported successfully', 'success');
+}
+
+async function fixCameraIssues() {
+  debugLog('Attempting to fix camera issues...', 'info');
+  
+  try {
+    // First, try to stop any existing stream
+    debugLog('Stopping existing stream...', 'info');
+    await stopStream();
+    
+    // Wait a moment for cleanup
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Try to start the stream again
+    debugLog('Starting stream with camera fix...', 'info');
+    await startStream();
+    
+    // Check status after fix
+    setTimeout(async () => {
+      const response = await fetch('/api/status');
+      const data = await response.json();
+      
+      if (data.running && data.streaming) {
+        debugLog('Camera fix successful!', 'success');
+      } else {
+        debugLog('Camera fix failed - manual intervention needed', 'error');
+        debugLog('Try: sudo chmod 666 /dev/video*', 'info');
+        debugLog('Or check camera hardware connections', 'info');
+      }
+    }, 3000);
+    
+  } catch (error) {
+    debugLog(`Camera fix failed: ${error.message}`, 'error');
+  }
+}
+
+async function restartStream() {
+  debugLog('Restarting stream system...', 'info');
+  
+  try {
+    // Stop current stream
+    debugLog('Stopping current stream...', 'info');
+    await stopStream();
+    
+    // Wait for cleanup
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Start fresh
+    debugLog('Starting fresh stream...', 'info');
+    await startStream();
+    
+    debugLog('Stream restart completed', 'success');
+    
+  } catch (error) {
+    debugLog(`Stream restart failed: ${error.message}`, 'error');
+  }
+}
+
+function clearDebugLog() {
+  debugLogs = [];
+  updateDebugOutput();
+  debugLog('Debug log cleared', 'info');
+}
+
+// MediaMTX Metrics Collection
+async function collectMediaMTXMetrics() {
+  try {
+    const response = await fetch('/api/mediamtx/metrics');
+    if (response.ok) {
+      const metrics = await response.json();
+      
+      mediamtxMetrics = {
+        cpuUsage: metrics.cpu_usage || 0,
+        memoryUsage: metrics.memory_usage || 0,
+        activeConnections: metrics.active_connections || 0,
+        streamBitrate: metrics.stream_bitrate || 0,
+        lastUpdate: Date.now()
+      };
+      
+      // Update UI with metrics
+      updateMetricsDisplay();
+      
+      // Log performance warnings
+      if (mediamtxMetrics.cpuUsage > 80) {
+        debugLog(`High CPU usage: ${mediamtxMetrics.cpuUsage}%`, 'warning');
+      }
+      if (mediamtxMetrics.memoryUsage > 80) {
+        debugLog(`High memory usage: ${mediamtxMetrics.memoryUsage}%`, 'warning');
+      }
+      
+      return mediamtxMetrics;
+    }
+  } catch (error) {
+    debugLog(`Metrics collection failed: ${error.message}`, 'error');
+  }
+  return null;
+}
+
+// Update metrics display in UI
+function updateMetricsDisplay() {
+  // Add metrics to video info bar if not already present
+  const videoInfoBar = document.querySelector('.video-info-bar');
+  if (videoInfoBar && !document.getElementById('metrics-display')) {
+    const metricsItem = document.createElement('div');
+    metricsItem.className = 'info-item';
+    metricsItem.id = 'metrics-display';
+    metricsItem.innerHTML = `
+      <span class="info-label">CPU:</span>
+      <span id="cpu-usage">${mediamtxMetrics.cpuUsage}%</span>
+      <span class="info-label" style="margin-left:10px">RAM:</span>
+      <span id="memory-usage">${mediamtxMetrics.memoryUsage}%</span>
+    `;
+    videoInfoBar.appendChild(metricsItem);
+  } else if (document.getElementById('metrics-display')) {
+    const cpuEl = document.getElementById('cpu-usage');
+    const memoryEl = document.getElementById('memory-usage');
+    if (cpuEl) cpuEl.textContent = mediamtxMetrics.cpuUsage + '%';
+    if (memoryEl) memoryEl.textContent = mediamtxMetrics.memoryUsage + '%';
+  }
+}
+
+// MediaMTX Hooks Implementation
+function setupMediaMTXHooks() {
+  // Client connect hook
+  mediamtxHooks.onClientConnect = (clientInfo) => {
+    debugLog(`Client connected: ${clientInfo.id} (${clientInfo.protocol})`, 'info');
+    
+    // Update connection count
+    mediamtxMetrics.activeConnections++;
+    
+    // Log connection details
+    if (clientInfo.user_agent) {
+      debugLog(`User agent: ${clientInfo.user_agent}`, 'info');
+    }
+  };
+  
+  // Client disconnect hook
+  mediamtxHooks.onClientDisconnect = (clientInfo) => {
+    debugLog(`Client disconnected: ${clientInfo.id}`, 'info');
+    
+    // Update connection count
+    mediamtxMetrics.activeConnections = Math.max(0, mediamtxMetrics.activeConnections - 1);
+  };
+  
+  // Stream start hook
+  mediamtxHooks.onStreamStart = (streamInfo) => {
+    debugLog(`Stream started: ${streamInfo.name}`, 'success');
+    
+    // Update stream status
+    const statusEl = sid('stream-status');
+    if (statusEl) {
+      statusEl.textContent = 'Active';
+      statusEl.style.color = '#0f0';
+    }
+  };
+  
+  // Stream stop hook
+  mediamtxHooks.onStreamStop = (streamInfo) => {
+    debugLog(`Stream stopped: ${streamInfo.name}`, 'warning');
+    
+    // Update stream status
+    const statusEl = sid('stream-status');
+    if (statusEl) {
+      statusEl.textContent = 'Stopped';
+      statusEl.style.color = '#f00';
+    }
+  };
+  
+  // Register hooks with MediaMTX
+  registerMediaMTXHooks();
+}
+
+// Register hooks with MediaMTX server
+async function registerMediaMTXHooks() {
+  try {
+    const response = await fetch('/api/mediamtx/hooks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        on_client_connect: '/api/hooks/client_connect',
+        on_client_disconnect: '/api/hooks/client_disconnect',
+        on_stream_start: '/api/hooks/stream_start',
+        on_stream_stop: '/api/hooks/stream_stop'
+      })
+    });
+    
+    if (response.ok) {
+      debugLog('MediaMTX hooks registered successfully', 'success');
+    } else {
+      debugLog('Failed to register MediaMTX hooks', 'warning');
+    }
+  } catch (error) {
+    debugLog(`Hook registration failed: ${error.message}`, 'error');
+  }
+}
+
+// Hook endpoint handlers (these would be implemented on the backend)
+async function handleClientConnect(clientInfo) {
+  if (mediamtxHooks.onClientConnect) {
+    mediamtxHooks.onClientConnect(clientInfo);
+  }
+}
+
+async function handleClientDisconnect(clientInfo) {
+  if (mediamtxHooks.onClientDisconnect) {
+    mediamtxHooks.onClientDisconnect(clientInfo);
+  }
+}
+
+async function handleStreamStart(streamInfo) {
+  if (mediamtxHooks.onStreamStart) {
+    mediamtxHooks.onStreamStart(streamInfo);
+  }
+}
+
+async function handleStreamStop(streamInfo) {
+  if (mediamtxHooks.onStreamStop) {
+    mediamtxHooks.onStreamStop(streamInfo);
+  }
+}
+
+// Keyboard controls
+const keyState = {};
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  
+  if (keyState[e.key]) return;
+  keyState[e.key] = true;
+  
+  switch (e.key.toLowerCase()) {
+    case 'w': go('forward'); e.preventDefault(); break;
+    case 's': go('backward'); e.preventDefault(); break;
+    case 'a': go('left'); e.preventDefault(); break;
+    case 'd': go('right'); e.preventDefault(); break;
+    case ' ': estop(); e.preventDefault(); break;
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  
+  if (!keyState[e.key]) return;
+  keyState[e.key] = false;
+  
+  if (['w', 's', 'a', 'd'].includes(e.key.toLowerCase())) {
+    stopM();
+  }
+});
+
+// Handle page visibility changes (pause/return) for better reliability
+function handleVisibilityChange() {
+  if (document.hidden) {
+    debugLog('Page paused - preparing for potential WebRTC disconnect', 'warning');
+  } else {
+    debugLog('Page resumed - checking and reconnecting WebRTC if needed', 'info');
+    // Check connection state immediately when returning
+    setTimeout(() => {
+      checkStreamHealth();
+    }, 1000);
+  }
+}
+
+// Stream health monitoring for reliability
+async function checkStreamHealth() {
+  try {
+    // Only monitor if we should have an active stream
+    if (!streamActive && webrtcPlayer) {
+      debugLog('Stream disconnected, attempting auto-reconnect...', 'warning');
+      await autoReconnectStream();
+      return;
+    }
+    
+    // Check if we have a WebRTC player but it's not working
+    if (streamActive && webrtcPlayer && webrtcPlayer.pc) {
+      const connectionState = webrtcPlayer.pc.connectionState;
+      if (connectionState === 'failed' || connectionState === 'disconnected') {
+        debugLog(`WebRTC connection ${connectionState}, attempting recovery...`, 'warning');
+        await autoReconnectStream();
+      }
+    }
+    
+    // If streamActive but no player, try to initialize
+    if (streamActive && !webrtcPlayer) {
+      debugLog('Stream active but no player, initializing...', 'warning');
+      await updateStreamPlayer().catch(e => console.error('Health check player init error:', e));
+    }
+  } catch (error) {
+    console.error('Health check error:', error);
+  }
+}
+
+async function autoReconnectStream() {
+  debugLog('Attempting auto-reconnection...', 'info');
+  try {
+    // Clean up existing player
+    if (webrtcPlayer) {
+      webrtcPlayer.destroy();
+      webrtcPlayer = null;
+      vuMeterInitializedForCurrentConnection = false;
+    }
+    
+    // Restart the stream if needed
+    if (streamActive) {
+      debugLog('Restarting stream for auto-reconnect...', 'info');
+      const response = await fetch('/api/stream/restart', {method: 'POST'});
+      const result = await response.json();
+      
+      if (result.success) {
+        debugLog('Stream restarted successfully for auto-reconnect', 'success');
+        await updateStreamPlayer().catch(e => console.error('Auto-reconnect player error:', e));
+      }
+    } else {
+      // Start stream if it's not active
+      await startStream();
+    }
+  } catch (error) {
+    debugLog(`Auto-reconnect failed: ${error.message}`, 'error');
+    // Try fallback recovery
+    setTimeout(() => {
+      debugLog('Attempting fallback recovery...', 'warning');
+      updateStreamPlayer().catch(e => console.error('Fallback recovery error:', e));
+    }, 5000);
+  }
+}
+
+// Enhanced connection monitoring for pause/resume scenarios
+let lastConnectionState = null;
+setInterval(() => {
+  if (webrtcPlayer && webrtcPlayer.pc) {
+    const currentState = webrtcPlayer.pc.connectionState;
+    if (currentState !== lastConnectionState) {
+      debugLog(`WebRTC connection state changed: ${currentState}`, 'info');
+      lastConnectionState = currentState;
+      
+      if (currentState === 'disconnected' || currentState === 'failed') {
+        debugLog('WebRTC disconnected, triggering immediate recovery', 'warning');
+        checkStreamHealth();
+      }
+    }
+  }
+}, 2000); // Check every 2 seconds
+
+// Auto-recovery: Try to start stream if not active
+async function autoRecoveryStream() {
+    try {
+        console.log('[Auto Recovery] Checking stream status...');
+        
+        const statusResponse = await fetch('/api/status');
+        const status = await statusResponse.json();
+        
+        if (!status.streaming) {
+            console.log('[Auto Recovery] Stream not active, attempting to start...');
+            
+            const startResponse = await fetch('/api/stream/start', {
+                method: 'POST'
+            });
+            const startResult = await startResponse.json();
+            
+            if (startResult.ok) {
+                console.log('[Auto Recovery] ✅ Stream started successfully:', startResult.msg);
+                // Wait a moment for stream to initialize
+                setTimeout(() => {
+                    statusAll();
+                }, 2000);
+            } else {
+                console.log('[Auto Recovery] ❌ Failed to start stream:', startResult.msg);
+            }
+        } else {
+            console.log('[Auto Recovery] ✅ Stream already active');
+            
+            // Additional check: verify MediaMTX is actually receiving the stream
+            try {
+                const streamStateResponse = await fetch('/api/stream/state');
+                const streamState = await streamStateResponse.json();
+                
+                if (streamState.current_state === 'active') {
+                    console.log('[Auto Recovery] Stream state confirmed active');
+                } else {
+                    console.log('[Auto Recovery] Stream state mismatch detected, triggering cleanup...');
+                    
+                    // Trigger system cleanup
+                    await fetch('/api/system/cleanup', { method: 'POST' });
+                    
+                    // Try to restart stream
+                    const restartResponse = await fetch('/api/stream/start', { method: 'POST' });
+                    const restartResult = await restartResponse.json();
+                    
+                    if (restartResult.ok) {
+                        console.log('[Auto Recovery] ✅ Stream restarted after cleanup:', restartResult.msg);
+                    }
+                }
+            } catch (error) {
+                console.log('[Auto Recovery] Error checking stream state:', error);
+            }
+        }
+    } catch (error) {
+        console.log('[Auto Recovery] Error during auto recovery:', error);
+    }
+}
+
+// Initialization
+async function init() {
+  log('Initializing Avatar Tank Control System...');
+  
+  // Simple approach: Run auto-recovery first, then gentle refresh
+  console.log('[Init] Running standard initialization...');
+  
+  // Run auto-recovery first
+  await autoRecoveryStream();
+  
+  // Then run a gentle refresh after a delay to ensure everything is working
+  setTimeout(async () => {
+    try {
+      console.log('[Init] Running gentle stream refresh after initialization...');
+      await refreshStream();
+    } catch (error) {
+      console.error('[Init] Gentle refresh failed, continuing with current state:', error);
+    }
+  }, 3000);
+  
+  // Initialize connections
+  initWebSocket();
+  
+  // Set initial state
+  setLang('en');
+  updateBattery();
+  setInterval(updateBattery, 60000); // Update battery every minute
+  
+  // Audio quality monitoring handled by updateAudioQuality() function
+  
+  // VU meter will be initialized after WebRTC stream is connected
+  
+  // Get initial system status
+  statusAll();
+  setInterval(statusAll, 30000); // Check status every 30 seconds
+  
+  // Health monitoring for reliability
+  setInterval(checkStreamHealth, 5000); // Check stream health every 5 seconds (more aggressive)
+  
+  // Document visibility change handling for pause detection
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  
+  // Simple page visibility handling
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      console.log('[Init] Page restored from cache, running stream refresh...');
+      setTimeout(() => refreshStream(), 1000);
+    }
+  });
+  
+  // Auto-diagnose on startup
+  setTimeout(() => {
+    debugLog('Auto-diagnosing system on startup...', 'info');
+    runSystemDiagnostics();
+  }, 5000);
+  
+  // Setup MediaMTX hooks and metrics
+  setupMediaMTXHooks();
+  setInterval(collectMediaMTXMetrics, 5000); // Collect metrics every 5 seconds
+  
+  // Start monitoring systems
+  updateDateTime();
+  setInterval(updateDateTime, 1000);
+  setInterval(enhancedVUMeter, 50);
+  setInterval(updateBandwidth, 100); // Update bandwidth every 100ms
+  
+  // Periodic motor status check
+  setInterval(checkMotorStatus, 30000); // Check every 30 seconds
+  
+  // Initialize stream buttons
+  updateStreamButtons();
+  
+  // Test system connectivity
+  setTimeout(() => {
+    fetch('/api/status')
+      .then(response => response.json())
+      .then(data => {
+        log('MediaMTX System: ' + (data.running ? 'Streaming' : 'Ready'));
+      })
+      .catch(e => {
+        log('System status check failed: ' + e.message);
+      });
+  }, 3000);
+  
+  vuMeterActive = false;
+  log('All systems initialized successfully');
+}
+
+// Start initialization when DOM is ready
+document.addEventListener('DOMContentLoaded', init);
+
+console.log('Avatar Tank interface loaded successfully');
+</script>
+</body>
+</html>

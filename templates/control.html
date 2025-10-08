@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avatar Tank - MediaMTX Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #555;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+            color: #333;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.danger {
+            background-color: #dc3545;
+        }
+        button.danger:hover {
+            background-color: #c82333;
+        }
+        button.success {
+            background-color: #28a745;
+        }
+        button.success:hover {
+            background-color: #218838;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .status.running {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.stopped {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        input[type="text"], input[type="range"], select {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
+        input[type="range"] {
+            width: 200px;
+        }
+        .snapshots, .recordings {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .file-item {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Avatar Tank - MediaMTX Control</h1>
+        
+        <!-- Live Stream -->
+        <div class="section">
+            <h3>Live Stream</h3>
+            <div id="stream-container" style="text-align: center; margin-bottom: 15px;">
+                <video id="stream-player" width="640" height="360" controls style="max-width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                    <source id="hls-source" src="" type="application/x-mpegURL">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <div class="control-group">
+                <button onclick="startStream()">Start Stream</button>
+                <button onclick="stopStream()" class="danger">Stop Stream</button>
+                <button onclick="refreshStream()">Refresh Stream</button>
+            </div>
+        </div>
+        
+        <!-- Status Section -->
+        <div class="section">
+            <h3>Stream Status</h3>
+            <div id="status" class="status stopped">Loading...</div>
+        </div>
+        
+        <!-- Stream URLs -->
+        <div class="section">
+            <h3>Stream URLs</h3>
+            <div class="control-group">
+                <label>HLS Stream:</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="text" id="hls-url" value="http://192.168.68.107:8888/stream/index.m3u8" readonly style="flex: 1; padding: 5px;">
+                    <button onclick="copyToClipboard('hls-url')">Copy</button>
+                </div>
+            </div>
+            <div class="control-group">
+                <label>RTSP Stream:</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="text" id="rtsp-url" value="rtsp://192.168.68.107:8554/stream" readonly style="flex: 1; padding: 5px;">
+                    <button onclick="copyToClipboard('rtsp-url')">Copy</button>
+                </div>
+            </div>
+            <div class="control-group">
+                <label>WebRTC Stream:</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="text" id="webrtc-url" value="http://192.168.68.107:8889/stream" readonly style="flex: 1; padding: 5px;">
+                    <button onclick="copyToClipboard('webrtc-url')">Copy</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Stream Settings -->
+        <div class="section">
+            <h3>Stream Settings</h3>
+            <div class="control-group">
+                <label for="resolution">Resolution:</label>
+                <select id="resolution" onchange="setResolution()">
+                    <option value="320p">320p (640x360)</option>
+                    <option value="480p" selected>480p (854x480)</option>
+                    <option value="720p">720p (1280x720)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="framerate">Framerate:</label>
+                <input type="range" id="framerate" min="10" max="25" value="10" onchange="setFramerate()">
+                <span id="fps-display">10 fps</span>
+            </div>
+        </div>
+        
+        <!-- Recording Control -->
+        <div class="section">
+            <h3>Recording Control</h3>
+            <div class="control-group">
+                <button onclick="startRecording()">Start Recording</button>
+                <button onclick="stopRecording()" class="danger">Stop Recording</button>
+            </div>
+        </div>
+        
+        <!-- Snapshot Control -->
+        <div class="section">
+            <h3>Snapshots</h3>
+            <button onclick="takeSnapshot()">Take Snapshot</button>
+            <button onclick="loadSnapshots()">Refresh Snapshots</button>
+            <div id="snapshots" class="snapshots"></div>
+        </div>
+        
+        <!-- Recordings -->
+        <div class="section">
+            <h3>Recordings</h3>
+            <button onclick="loadRecordings()">Refresh Recordings</button>
+            <div id="recordings" class="recordings"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        // Load initial status
+        loadStatus();
+        loadSnapshots();
+        loadRecordings();
+
+        function loadStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('status');
+                    const wasRunning = statusDiv.className.includes('running');
+                    const isRunning = data.running;
+                    
+                    if (isRunning) {
+                        statusDiv.className = 'status running';
+                        statusDiv.textContent = `Stream Running - ${data.resolution} @ ${data.framerate}fps`;
+                        
+                        // Only update video player if stream just started or if not already playing
+                        const video = document.getElementById('stream-player');
+                        if (!wasRunning || !video.hls) {
+                            updateStreamPlayer();
+                        }
+                    } else {
+                        statusDiv.className = 'status stopped';
+                        statusDiv.textContent = 'Stream Stopped';
+                        
+                        // Stop video player when stream stops
+                        const video = document.getElementById('stream-player');
+                        if (video.hls) {
+                            video.hls.destroy();
+                            video.hls = null;
+                        }
+                        video.src = '';
+                    }
+                    
+                    // Update UI controls
+                    const resolutionSelect = document.getElementById('resolution');
+                    const framerateSlider = document.getElementById('framerate');
+                    const fpsDisplay = document.getElementById('fps-display');
+                    
+                    // Set resolution
+                    for (let option of resolutionSelect.options) {
+                        if (data.resolution === data.available_resolutions.find(r => r === option.value)) {
+                            option.selected = true;
+                            break;
+                        }
+                    }
+                    
+                    // Set framerate
+                    framerateSlider.value = data.framerate;
+                    fpsDisplay.textContent = data.framerate + ' fps';
+                })
+                .catch(error => console.error('Error loading status:', error));
+        }
+
+        function startStream() {
+            fetch('/api/stream/start', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        loadStatus();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => console.error('Error starting stream:', error));
+        }
+
+        function stopStream() {
+            fetch('/api/stream/stop', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        loadStatus();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => console.error('Error stopping stream:', error));
+        }
+
+        function startRecording() {
+            fetch('/api/recording/start', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Recording started: ' + data.message);
+                        loadStatus();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => console.error('Error starting recording:', error));
+        }
+
+        function stopRecording() {
+            fetch('/api/recording/stop', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Recording stopped: ' + data.message);
+                        loadStatus();
+                        loadRecordings();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => console.error('Error stopping recording:', error));
+        }
+
+        function takeSnapshot() {
+            fetch('/api/snapshot', {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        loadSnapshots();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => console.error('Error taking snapshot:', error));
+        }
+
+        function setResolution() {
+            const resolution = document.getElementById('resolution').value;
+            fetch('/api/resolution', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({resolution: resolution})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadStatus();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => console.error('Error setting resolution:', error));
+        }
+
+        function setFramerate() {
+            const framerate = document.getElementById('framerate').value;
+            document.getElementById('fps-display').textContent = framerate + ' fps';
+            fetch('/api/framerate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({framerate: parseInt(framerate)})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadStatus();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => console.error('Error setting framerate:', error));
+        }
+
+        function loadSnapshots() {
+            fetch('/api/snapshots')
+                .then(response => response.json())
+                .then(data => {
+                    const snapshotsDiv = document.getElementById('snapshots');
+                    snapshotsDiv.innerHTML = '';
+                    data.forEach(snapshot => {
+                        const div = document.createElement('div');
+                        div.className = 'file-item';
+                        div.innerHTML = `
+                            <span>${snapshot.name}</span>
+                            <span>${(snapshot.size / 1024).toFixed(1)} KB</span>
+                        `;
+                        snapshotsDiv.appendChild(div);
+                    });
+                })
+                .catch(error => console.error('Error loading snapshots:', error));
+        }
+
+        function loadRecordings() {
+            fetch('/api/recordings')
+                .then(response => response.json())
+                .then(data => {
+                    const recordingsDiv = document.getElementById('recordings');
+                    recordingsDiv.innerHTML = '';
+                    data.forEach(recording => {
+                        const div = document.createElement('div');
+                        div.className = 'file-item';
+                        div.innerHTML = `
+                            <span>${recording.name}</span>
+                            <span>${(recording.size / 1024 / 1024).toFixed(1)} MB</span>
+                        `;
+                        recordingsDiv.appendChild(div);
+                    });
+                })
+                .catch(error => console.error('Error loading recordings:', error));
+        }
+
+        function refreshStream() {
+            const video = document.getElementById('stream-player');
+            const source = document.getElementById('hls-source');
+            const currentTime = video.currentTime;
+            
+            // Reload the video source
+            source.src = source.src + '?t=' + new Date().getTime();
+            video.load();
+            video.currentTime = currentTime;
+            video.play().catch(e => console.log('Video play failed:', e));
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            element.select();
+            element.setSelectionRange(0, 99999); // For mobile devices
+            document.execCommand('copy');
+            
+            // Show feedback
+            const button = element.nextElementSibling;
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 2000);
+        }
+
+        function updateStreamPlayer() {
+            const video = document.getElementById('stream-player');
+            const hlsUrl = 'http://192.168.68.107:8888/stream/index.m3u8';
+            
+            if (Hls.isSupported()) {
+                // Use HLS.js for better browser compatibility
+                if (video.hls) {
+                    video.hls.destroy();
+                }
+                const hls = new Hls({
+                    debug: false,
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 90
+                });
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(video);
+                video.hls = hls;
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    console.log('HLS manifest parsed, starting playback');
+                    video.play().catch(e => console.log('Video play failed:', e));
+                });
+                
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.error('HLS error:', data);
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.log('Fatal network error, retrying in 5 seconds...');
+                                setTimeout(updateStreamPlayer, 5000);
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.log('Fatal media error, recovering...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                console.log('Fatal error, destroying HLS...');
+                                hls.destroy();
+                                break;
+                        }
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native HLS support (Safari)
+                video.src = hlsUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    video.play().catch(e => console.log('Video play failed:', e));
+                });
+            } else {
+                console.error('HLS is not supported in this browser');
+            }
+        }
+
+        // Auto-refresh status every 5 seconds
+        setInterval(loadStatus, 5000);
+    </script>
+</body>
+</html>
