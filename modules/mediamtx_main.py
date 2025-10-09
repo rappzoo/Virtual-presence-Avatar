@@ -872,7 +872,7 @@ def play_sound(sound_id):
                     except:
                         return jsonify({"ok": False, "msg": f"Sound file not found and no system beep available"})
             else:
-                return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
+            return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
         
         # Use mpg123 or ffplay to play MP3 files
         try:
@@ -1762,18 +1762,27 @@ def _stop_reliable_recording():
         recording_process.stdin.write(b'q\n')
         recording_process.stdin.flush()
         
-        # Wait for process to finish
+        # Wait for process to finish gracefully
+        try:
         recording_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            print("[Reliable Recording] Graceful stop timeout, force killing...")
+            recording_process.kill()
+            recording_process.wait()
         
-        # Check if file was created and get size
+        # Check if file was created and validate
         file_size = 0
+        file_valid = False
         if recording_filename and os.path.exists(recording_filename):
             file_size = os.path.getsize(recording_filename)
+            # Quick validation - file should be at least 1KB and have video content
+            file_valid = file_size > 1000
         
         recording_duration = 0
         if recording_start_time:
             recording_duration = (datetime.datetime.now() - recording_start_time).total_seconds()
         
+        if file_valid:
         result = {
             'success': True,
             'message': f'Recording stopped. Duration: {recording_duration:.1f}s, Size: {file_size / (1024*1024):.1f}MB',
@@ -1781,6 +1790,21 @@ def _stop_reliable_recording():
             'duration': recording_duration,
             'size': file_size
         }
+        else:
+            # File is corrupted or too small, remove it
+            if recording_filename and os.path.exists(recording_filename):
+                try:
+                    os.remove(recording_filename)
+                    print(f"[Reliable Recording] Removed corrupted file: {recording_filename}")
+                except:
+                    pass
+            result = {
+                'success': False,
+                'message': f'Recording stopped but file corrupted (Duration: {recording_duration:.1f}s)',
+                'filename': None,
+                'duration': recording_duration,
+                'size': 0
+            }
         
         print(f"[Reliable Recording] ✓ {result['message']}")
         
@@ -2307,64 +2331,47 @@ def auto_start_stream():
     except Exception as e:
         return jsonify({'error': str(e)})
 
-@app.route('/api/recording/start', methods=['POST'])
-def start_recording():
-    """Start robust recording directly from FFmpeg source"""
-    try:
-        from modules.mediamtx_camera import recording_manager
-        result = recording_manager.start_recording()
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-@app.route('/api/recording/stop', methods=['POST'])
-def stop_recording():
-    """Stop recording gracefully"""
-    try:
-        from modules.mediamtx_camera import recording_manager
-        result = recording_manager.stop_recording()
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)})
+# Duplicate recording endpoints removed - using main recording system above
 
 def _get_recording_status_internal():
     """Get current recording status (internal function for status endpoint)"""
     try:
-        from modules.mediamtx_camera import recording_manager
-        status = recording_manager.get_recording_status()
-        return status  # Return dictionary, not jsonify
+        global recording_process, recording_start_time, recording_filename
+        
+        if recording_process is None:
+            return {'recording': False, 'message': 'No recording in progress'}
+        
+        if recording_process.poll() is not None:
+            # Process has terminated
+            recording_process = None
+            recording_start_time = None
+            recording_filename = None
+            return {'recording': False, 'message': 'Recording process terminated'}
+        
+        # Recording is active
+        duration = 0
+        if recording_start_time:
+            duration = (datetime.datetime.now() - recording_start_time).total_seconds()
+        
+        return {
+            'recording': True,
+            'filename': recording_filename,
+            'duration': duration,
+            'pid': recording_process.pid
+        }
     except Exception as e:
-        return {'error': str(e)}  # Return dictionary, not jsonify
+        return {'error': str(e)}
 
 @app.route('/api/recording/status', methods=['GET'])
 def get_recording_status():
     """Get current recording status"""
     try:
-        from modules.mediamtx_camera import recording_manager
-        status = recording_manager.get_recording_status()
+        status = _get_recording_status_internal()
         return jsonify(status)
     except Exception as e:
         return jsonify({'error': str(e)})
 
-@app.route('/api/recording/list', methods=['GET'])
-def list_recordings():
-    """List all recording files"""
-    try:
-        from modules.mediamtx_camera import recording_manager
-        recordings = recording_manager.list_recordings()
-        return jsonify({'recordings': recordings})
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-@app.route('/api/recording/resume', methods=['POST'])
-def resume_recording():
-    """Manually trigger recording resume"""
-    try:
-        from modules.mediamtx_camera import recording_manager
-        recording_manager.auto_resume_recording()
-        return jsonify({'status': 'Recording resume triggered'})
-    except Exception as e:
-        return jsonify({'error': str(e)})
+# Additional recording endpoints removed - using main recording system
 
 # Background bandwidth management thread
 def bandwidth_management_thread():
