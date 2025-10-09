@@ -25,6 +25,15 @@ if parent_dir not in sys.path:
 # Import all MediaMTX-compatible modules with error handling
 print("[MediaMTX Main] Loading Avatar Tank MediaMTX modules...")
 
+# Import ESP32 communicator
+try:
+    from modules.esp32_communicator import init_esp32, send_crawler_command, get_esp32_status, cleanup_esp32
+    print("[MediaMTX Main] ✓ ESP32 communicator loaded")
+    esp32_available = True
+except ImportError as e:
+    print(f"[MediaMTX Main] ✗ ESP32 communicator failed: {e}")
+    esp32_available = False
+
 try:
     from modules.device_detector import device_detector, device_config, CAMERA_DEVICE, MIC_PLUG, SPK_PLUG, MOTOR_PORT
     print("[MediaMTX Main] ✓ Device detector loaded")
@@ -754,7 +763,7 @@ def play_word():
 
 @app.route('/motor/<direction>', methods=['POST'])
 def motor_control(direction):
-    """Motor control endpoint"""
+    """Motor control endpoint (legacy)"""
     try:
         data = request.get_json()
         speed = data.get('speed', 150)
@@ -765,6 +774,35 @@ def motor_control(direction):
         return jsonify({"ok": True, "msg": f"Motor {direction} at {speed}"})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Motor error: {e}"})
+
+@app.route('/motor/crawler', methods=['POST'])
+def crawler_control():
+    """Crawler motor control endpoint for ESP32 communication"""
+    try:
+        data = request.get_json()
+        direction = data.get('direction', 'stop')
+        left_speed = data.get('leftSpeed', 0)
+        right_speed = data.get('rightSpeed', 0)
+        
+        print(f"[Crawler] Direction: {direction}, Left: {left_speed}, Right: {right_speed}")
+        
+        # Send command to ESP32 if available
+        esp32_success = False
+        if esp32_available:
+            try:
+                esp32_success = send_crawler_command(direction, left_speed, right_speed)
+            except Exception as e:
+                print(f"[Crawler] ESP32 communication error: {e}")
+                esp32_success = False
+        
+        return jsonify({
+            "ok": True, 
+            "msg": f"Crawler {direction} - L:{left_speed} R:{right_speed}",
+            "command": f"MOTOR:L:{left_speed}:R:{right_speed}",
+            "esp32_sent": esp32_success
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Crawler error: {e}"})
 
 @app.route('/motor/test', methods=['POST'])
 def motor_test():
@@ -1618,6 +1656,14 @@ def main():
     """Main function"""
     # Create templates directory and HTML file
     create_templates()
+    
+    # Initialize ESP32 communication
+    if esp32_available:
+        try:
+            print("[Main] Initializing ESP32 communication...")
+            init_esp32()
+        except Exception as e:
+            print(f"[Main] ESP32 initialization failed: {e}")
     
     # Get RPi IP addresses
     try:
@@ -2501,5 +2547,10 @@ if __name__ == "__main__":
     health_thread = threading.Thread(target=stream_health_monitor_thread, daemon=True)
     health_thread.start()
     print("[Stream Health] Background stream health monitoring started")
+    
+    # Setup cleanup handlers
+    import atexit
+    if esp32_available:
+        atexit.register(cleanup_esp32)
     
     main()

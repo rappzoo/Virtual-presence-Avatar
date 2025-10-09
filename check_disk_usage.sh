@@ -77,3 +77,4 @@ echo "   - Run ./cleanup_logs.sh to clean old log files"
 echo "   - Delete old snapshots if disk space is low"
 echo "   - Python cache files can be safely deleted (they'll regenerate)"
 
+

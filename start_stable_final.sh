@@ -107,3 +107,4 @@ echo "$(date): Process PIDs: MediaMTX=$MEDIAMTX_PID, FFmpeg=$FFMPEG_PID, Avatar=
 wait $MEDIAMTX_PID $FFMPEG_PID $AVATAR_PID $MONITOR_PID
 
 
+

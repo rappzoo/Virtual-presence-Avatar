@@ -35,3 +35,4 @@ echo "All processes stopped"
 ps aux | grep -E '(mediamtx|ffmpeg|python.*enhanced|modules/mediamtx_main)' | grep -v grep || echo "No processes running"
 
 
+

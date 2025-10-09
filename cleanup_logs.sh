@@ -88,3 +88,4 @@ echo ""
 echo "💡 Tip: Run this script periodically to keep your system clean"
 echo "   Usage: ./cleanup_logs.sh"
 
+
