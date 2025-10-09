@@ -755,10 +755,6 @@
 <body>
 <div class="container">
   <div class="panel tts">
-    <div id="recent" class="pills" style="display:none;">
-      <div class="pill" onclick="pickRecentPhrase(0)" id="recent1"></div>
-      <div class="pill" onclick="pickRecentPhrase(1)" id="recent2"></div>
-    </div>
     <div id="predictions" class="pills" style="display:none;"></div>
     <div id="diacritics" class="pills" style="display:none;">
       <div class="pill diacritic-pill" onclick="insertDiacritic('ă')">ă</div>
@@ -965,7 +961,6 @@
 // Global variables
 let lang = 'en';
 let predictionTimeout = null;
-let recentPhrases = [];
 
 // Enhanced prediction system
 let wordContext = [];
@@ -1934,7 +1929,7 @@ function predictNextWord() {
         return bFreq - aFreq;
       });
       
-      sortedSuggestions.slice(0, 6).forEach(item => {
+      sortedSuggestions.slice(0, 3).forEach(item => {
         const pill = document.createElement('div');
         pill.className = 'pill';
         pill.textContent = item;
@@ -1951,7 +1946,7 @@ function predictNextWord() {
         predictions.appendChild(pill);
       });
       predictions.style.display = 'flex';
-      console.log('[PredictNextWord] Displayed', sortedSuggestions.slice(0, 6).length, 'suggestions');
+      console.log('[PredictNextWord] Displayed', sortedSuggestions.slice(0, 3).length, 'suggestions');
     }
   } else {
     console.log('[PredictNextWord] No suggestions found');
@@ -2033,30 +2028,6 @@ function getCommonNextWords(lastWord) {
   return Array.from(suggestions);
 }
 
-// Function to handle recent phrase selection
-function pickRecentPhrase(index) {
-  if (recentPhrases[index]) {
-    const input = sid('tts');
-    if (input) {
-      // Replace current text with the recent phrase
-      input.value = recentPhrases[index];
-      input.focus();
-      
-      // Hide predictions
-      const predictions = sid('predictions');
-      if (predictions) predictions.style.display = 'none';
-      
-      // Learn the phrase
-      learnWordsFromText(recentPhrases[index]);
-      
-      // Auto-predict next word after the phrase
-      setTimeout(() => {
-        updateWordContext(input.value);
-        predictNextWord();
-      }, 100);
-    }
-  }
-}
 
 // Enhanced context-aware prediction system
 function updateWordContext(text) {
@@ -2113,7 +2084,7 @@ function getContextualSuggestions(currentWord, context) {
     }
   });
   
-  return Array.from(suggestions).slice(0, 8); // Limit to 8 suggestions
+  return Array.from(suggestions).slice(0, 3); // Limit to 3 suggestions
 }
 
 async function predictText(query) {
@@ -2140,7 +2111,7 @@ async function predictText(query) {
       // Get server-based predictions
       let serverSuggestions = [];
       try {
-      const response = await fetch('/predict?q=' + encodeURIComponent(query) + '&limit=5&lang=' + currentLang);
+      const response = await fetch('/predict?q=' + encodeURIComponent(query) + '&limit=3&lang=' + currentLang);
       const data = await response.json();
         if (data.ok && data.items) {
           serverSuggestions = data.items;
@@ -2167,7 +2138,7 @@ async function predictText(query) {
           return bFreq - aFreq;
         });
         
-        sortedSuggestions.slice(0, 6).forEach(item => {
+        sortedSuggestions.slice(0, 3).forEach(item => {
           const pill = document.createElement('div');
           pill.className = 'pill';
           pill.textContent = item;
@@ -2288,7 +2259,6 @@ async function speak() {
   // Learn words and patterns from the text
   await learnWordsFromText(text);
   updateSentenceHistory(text);
-  updateRecentPhrases(text);
   
   log('Speaking...');
   try {
@@ -2340,51 +2310,6 @@ function updateSentenceHistory(text) {
   }
 }
 
-function updateRecentPhrases(text) {
-  // Add to recent phrases
-  if (!recentPhrases.includes(text)) {
-    recentPhrases.unshift(text);
-    
-    // Keep only last 10 phrases
-    if (recentPhrases.length > 10) {
-      recentPhrases = recentPhrases.slice(0, 10);
-    }
-    
-    // Save to localStorage
-    try {
-      localStorage.setItem('avatarRecentPhrases', JSON.stringify(recentPhrases));
-    } catch (e) {
-      console.log('Error saving recent phrases:', e);
-    }
-    
-    // Update UI
-    updateRecentPhrasesUI();
-  }
-}
-
-function updateRecentPhrasesUI() {
-  const recentEl = sid('recent');
-  const recent1El = sid('recent1');
-  const recent2El = sid('recent2');
-  
-  if (recentEl && recent1El && recent2El) {
-    if (recentPhrases.length > 0) {
-      recent1El.textContent = recentPhrases[0];
-      recent1El.style.display = 'block';
-    } else {
-      recent1El.style.display = 'none';
-    }
-    
-    if (recentPhrases.length > 1) {
-      recent2El.textContent = recentPhrases[1];
-      recent2El.style.display = 'block';
-    } else {
-      recent2El.style.display = 'none';
-    }
-    
-    recentEl.style.display = (recentPhrases.length > 0) ? 'flex' : 'none';
-  }
-}
 
 function loadPredictionData() {
   try {
@@ -2406,18 +2331,12 @@ function loadPredictionData() {
       wordFrequency = JSON.parse(savedFrequency);
     }
     
-    // Load recent phrases
-    const savedPhrases = localStorage.getItem('avatarRecentPhrases');
-    if (savedPhrases) {
-      recentPhrases = JSON.parse(savedPhrases);
-      updateRecentPhrasesUI();
-    }
     
     console.log('Prediction data loaded:', {
       sentences: sentenceHistory.length,
       patterns: Object.keys(contextPatterns).length,
       words: Object.keys(wordFrequency).length,
-      recent: recentPhrases.length
+      recent: 0
     });
   } catch (e) {
     console.log('Error loading prediction data:', e);
