@@ -54,15 +54,19 @@ class PiperTTS:
         # Remove the question mark temporarily
         text_without_q = text.rstrip('?').strip()
         
-        # Method 1: Add emphasis and pause before question mark
-        # This creates a natural pause that helps with intonation
-        enhanced_text = f"{text_without_q}... ?"
+        # Different approaches for different question word patterns
+        question_words = ['ce', 'cum', 'unde', 'când', 'de ce', 'cine', 'care', 'cât', 'câte', 'câți', 'câteva']
         
-        # Method 2: Alternative - add stress markers (if Piper supports them)
-        # enhanced_text = f"{text_without_q}?"
+        # Check if text contains common Romanian question words
+        text_lower = text_without_q.lower()
+        has_question_word = any(word in text_lower for word in question_words)
         
-        # Method 3: Alternative - add punctuation for emphasis
-        # enhanced_text = f"{text_without_q}?"
+        if has_question_word:
+            # For questions with question words - add more emphasis and pause
+            enhanced_text = f"{text_without_q}... ?"
+        else:
+            # For other questions - simpler approach
+            enhanced_text = f"{text_without_q} ?"
         
         return enhanced_text
 

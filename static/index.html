@@ -1852,11 +1852,13 @@ function pick(t) {
   console.log('[Pick] Selected word:', t);
   const input = sid('tts');
   if (input) {
-    const words = input.value.trim().split(/\s+/);
-    if (words.length > 0 && input.value.trim().length > 0) {
-      words[words.length - 1] = t;
-      input.value = words.join(' ');
+    const currentText = input.value.trim();
+    
+    // If there's existing text, add a space and then the new word
+    if (currentText.length > 0) {
+      input.value = currentText + ' ' + t;
     } else {
+      // If no text, just add the word
       input.value = t;
     }
     input.value += ' ';
