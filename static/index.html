@@ -2469,6 +2469,12 @@ function handleKeyDown(event) {
   // Only handle WASD keys
   if (!['w', 'a', 's', 'd'].includes(key)) return;
   
+  // Don't trigger motors if typing in TTS input field
+  const activeElement = document.activeElement;
+  if (activeElement && (activeElement.id === 'tts-input' || activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+    return; // Allow normal typing in input fields
+  }
+  
   // Prevent default behavior to avoid page scrolling
   event.preventDefault();
   
@@ -2514,6 +2520,12 @@ function handleKeyUp(event) {
   
   // Only handle WASD keys
   if (!['w', 'a', 's', 'd'].includes(key)) return;
+  
+  // Don't trigger motors if typing in TTS input field
+  const activeElement = document.activeElement;
+  if (activeElement && (activeElement.id === 'tts-input' || activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+    return; // Allow normal typing in input fields
+  }
   
   // Prevent default behavior
   event.preventDefault();
