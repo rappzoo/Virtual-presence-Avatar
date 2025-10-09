@@ -483,7 +483,8 @@ class RecordingManager:
                 
                 # Get camera and audio devices
                 camera_device = get_camera_device() or "/dev/video0"
-                audio_device = "plughw:3,0"
+                # Use different audio device to avoid conflict with WebRTC stream
+                audio_device = "default"  # Use default device instead of plughw:3,0
                 
                 # Generate timestamped filename
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1678,7 +1679,7 @@ def get_ffmpeg_command():
         '-f', 'v4l2',
         '-i', camera_device,
         '-f', 'alsa',
-        '-i', 'plughw:3,0',
+        '-i', 'default',  # Use default audio device to avoid conflict
         
         # Video encoding with optimized settings
         '-vf', f'fps={current_framerate},scale={width}:{height}:flags=lanczos,format=yuv420p',

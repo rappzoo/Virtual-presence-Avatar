@@ -1700,8 +1700,8 @@ def _start_reliable_recording():
         # Get camera device (use same as main stream)
         camera_device = get_camera_device() if 'get_camera_device' in globals() else '/dev/video0'
         
-        # Get audio device
-        audio_device = 'plughw:3,0'  # Use same audio device as main stream
+        # Get audio device - use different device to avoid conflict with main stream
+        audio_device = 'default'  # Use default device instead of plughw:3,0
         
         # Create recording command using stream input instead of camera directly
         # This approach avoids camera device conflicts

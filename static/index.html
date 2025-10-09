@@ -2256,6 +2256,12 @@ async function speak() {
   const text = textEl.value.trim();
   if (!text) return;
   
+  // Check if recording is active - prevent TTS during recording to avoid stream conflicts
+  if (isRecording) {
+    log('⚠️ TTS disabled during recording to prevent stream conflicts');
+    return;
+  }
+  
   // Learn words and patterns from the text
   await learnWordsFromText(text);
   updateSentenceHistory(text);
@@ -3743,6 +3749,12 @@ async function toggleMute() {
 
 // Sound effects
 async function beep(soundId) {
+  // Check if recording is active - prevent sound effects during recording to avoid stream conflicts
+  if (isRecording) {
+    log('⚠️ Sound effects disabled during recording to prevent stream conflicts');
+    return;
+  }
+  
   try {
     const response = await fetch('/play_sound/' + soundId, {method: 'POST'});
     const result = await response.json();
