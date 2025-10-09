@@ -1711,9 +1711,12 @@ def _start_reliable_recording():
             'ffmpeg', '-nostdin',
             '-rtsp_transport', 'tcp',  # Use TCP for reliability
             '-i', rtsp_url,  # Use stream instead of camera
+            '-f', 'alsa', '-i', audio_device,  # Add audio input
             '-c:v', 'libx264',
             '-preset', 'fast',  # Faster encoding for recording
             '-crf', '23',       # Good quality
+            '-c:a', 'aac',      # Audio codec
+            '-b:a', '128k',     # Audio bitrate
             '-avoid_negative_ts', 'make_zero',  # Fix timestamp issues
             '-f', 'mp4',        # Force MP4 format
             '-movflags', '+faststart',  # Optimize for streaming
@@ -1730,8 +1733,8 @@ def _start_reliable_recording():
             stdin=subprocess.PIPE
         )
         
-        # Wait a moment to check if it started successfully
-        time.sleep(2)
+        # Wait longer for RTSP connection to establish
+        time.sleep(5)
         if recording_process.poll() is not None:
             # Get error output
             stderr_output = ""
