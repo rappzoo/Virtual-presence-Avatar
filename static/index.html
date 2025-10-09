@@ -1854,14 +1854,23 @@ function pick(t) {
   if (input) {
     const currentText = input.value.trim();
     
-    // If there's existing text, add a space and then the new word
-    if (currentText.length > 0) {
-      input.value = currentText + ' ' + t;
+    // Check if we're in the middle of typing a word (no trailing space)
+    const isTypingWord = currentText.length > 0 && !currentText.endsWith(' ');
+    
+    if (isTypingWord) {
+      // Replace the current incomplete word with the selected word
+      const words = currentText.split(/\s+/);
+      words[words.length - 1] = t; // Replace last incomplete word
+      input.value = words.join(' ') + ' ';
     } else {
-      // If no text, just add the word
-      input.value = t;
+      // If we're at the end of a complete word or start, just add the word
+      if (currentText.length > 0) {
+        input.value = currentText + ' ' + t + ' ';
+      } else {
+        input.value = t + ' ';
+      }
     }
-    input.value += ' ';
+    
     input.focus();
     
     console.log('[Pick] Updated input value:', input.value);
