@@ -1847,20 +1847,20 @@ function pick(t) {
   console.log('[Pick] Selected word:', t);
   const input = sid('tts');
   if (input) {
-    const currentText = input.value.trim();
+    const currentText = input.value; // Don't trim - preserve spaces
     
     // Check if we're in the middle of typing a word (no trailing space)
     const isTypingWord = currentText.length > 0 && !currentText.endsWith(' ');
     
     if (isTypingWord) {
       // Replace the current incomplete word with the selected word
-      const words = currentText.split(/\s+/);
+      const words = currentText.trim().split(/\s+/);
       words[words.length - 1] = t; // Replace last incomplete word
       input.value = words.join(' ') + ' ';
     } else {
       // If we're at the end of a complete word or start, just add the word
-      if (currentText.length > 0) {
-        input.value = currentText + ' ' + t + ' ';
+      if (currentText.trim().length > 0) {
+        input.value = currentText.trim() + ' ' + t + ' ';
       } else {
         input.value = t + ' ';
       }
