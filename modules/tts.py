@@ -49,21 +49,38 @@ class PiperTTS:
         onnx = sorted(glob.glob(os.path.join(lang_dir, "*.onnx")))
         return onnx[0] if onnx else None
 
-    def _fix_romanian_question_intonation(self, text):
-        """Fix Romanian question intonation by adding SSML-like markup"""
-        # Remove the question mark temporarily
-        text_without_q = text.rstrip('?').strip()
-        
-        # Try SSML-like markup first (if Piper supports it)
+    def _speak_romanian_question(self, text):
+        """Use espeak-ng directly for Romanian questions with proper intonation"""
         try:
-            # Add emphasis and rising intonation for questions
-            enhanced_text = f"<prosody rate='0.9' pitch='+20%'>{text_without_q}</prosody>?"
-            return enhanced_text
-        except:
-            # Fallback: Use simpler approach with punctuation and spacing
-            # Add a slight pause before the question mark for better intonation
-            enhanced_text = f"{text_without_q} ?"
-            return enhanced_text
+            # Use Romanian voice with proper question intonation
+            # Add slight pause before question mark for better intonation
+            text_with_pause = text.rstrip('?').strip() + " ?"
+            
+            es = subprocess.Popen([
+                "espeak-ng", 
+                "-v", "ro",           # Romanian voice
+                "-s", "160",          # Slower speed for questions
+                "-p", "50",           # Higher pitch for questions
+                "-a", "100",          # Amplitude
+                "--stdout", 
+                text_with_pause
+            ], stdout=subprocess.PIPE)
+            
+            ap = subprocess.Popen([
+                "aplay", "-q", "-D", SPK_PLUG
+            ], stdin=es.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=False)
+            
+            es.stdout.close()
+            ap.wait(timeout=20)
+            es.wait(timeout=20)
+            
+            if ap.returncode != 0:
+                return {"ok": False, "msg": f"espeak/aplay error: {ap.stderr.read().decode('utf-8','ignore') if ap.stderr else 'fail'}"}
+            
+            return {"ok": True, "msg": "Spoken (espeak-ng Romanian question)"}
+            
+        except Exception as e:
+            return {"ok": False, "msg": f"Romanian question TTS error: {e}"}
 
     def status(self):
         return {
@@ -83,8 +100,10 @@ class PiperTTS:
         
         # Fix Romanian question intonation
         is_romanian_question = self.current_language == 'ro' and text.endswith('?')
+        
+        # For Romanian questions, use espeak-ng directly for better intonation
         if is_romanian_question:
-            text = self._fix_romanian_question_intonation(text)
+            return self._speak_romanian_question(text)
 
         lang_dir = self.languages[self.current_language]['dir']
         # 1) Piper CLI?
@@ -134,26 +153,13 @@ class PiperTTS:
 
         # 3) Fallback: espeak-ng -> aplay
         try:
-            # Use Romanian voice for Romanian questions to get proper intonation
-            if is_romanian_question:
-                voice = "ro"
-                speed = "160"  # Slightly slower for questions
-                # Add rising intonation for questions
-                espeak_text = text.rstrip('?') + "?"
-            else:
-                voice = "en-us"
-                speed = "170"
-                espeak_text = text
-            
-            es = subprocess.Popen(["espeak-ng","-v",voice,"-s",speed,"--stdout", espeak_text], stdout=subprocess.PIPE)
+            es = subprocess.Popen(["espeak-ng","-v","en-us","-s","170","--stdout", text], stdout=subprocess.PIPE)
             ap = subprocess.Popen(["aplay","-q","-D", SPK_PLUG], stdin=es.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=False)
             es.stdout.close()
             ap.wait(timeout=20); es.wait(timeout=20)
             if ap.returncode!=0:
                 return {"ok": False, "msg": f"espeak/aplay error: {ap.stderr.read().decode('utf-8','ignore') if ap.stderr else 'fail'}"}
-            
-            engine_msg = "espeak-ng Romanian" if is_romanian_question else "espeak-ng fallback"
-            return {"ok": True, "msg": f"Spoken ({engine_msg})"}
+            return {"ok": True, "msg": "Spoken (espeak-ng fallback)"}
         except Exception as e:
             return {"ok": False, "msg": f"no TTS engines available: {e}"}
 
