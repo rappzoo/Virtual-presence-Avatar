@@ -1708,13 +1708,15 @@ def _start_reliable_recording():
         rtsp_url = 'rtsp://localhost:8554/stream'
         
         cmd = [
-            'ffmpeg',
+            'ffmpeg', '-nostdin',
             '-rtsp_transport', 'tcp',  # Use TCP for reliability
             '-i', rtsp_url,  # Use stream instead of camera
             '-c:v', 'libx264',
             '-preset', 'fast',  # Faster encoding for recording
             '-crf', '23',       # Good quality
-            '-t', '300',        # Limit to 5 minutes to prevent huge files
+            '-avoid_negative_ts', 'make_zero',  # Fix timestamp issues
+            '-f', 'mp4',        # Force MP4 format
+            '-movflags', '+faststart',  # Optimize for streaming
             recording_filename
         ]
         
@@ -1729,9 +1731,15 @@ def _start_reliable_recording():
         )
         
         # Wait a moment to check if it started successfully
-        time.sleep(1)
+        time.sleep(2)
         if recording_process.poll() is not None:
-            error_msg = "Recording process failed to start"
+            # Get error output
+            stderr_output = ""
+            try:
+                stderr_output = recording_process.stderr.read().decode('utf-8')
+            except:
+                pass
+            error_msg = f"Recording process failed to start: {stderr_output}"
             print(f"[Reliable Recording] ✗ {error_msg}")
             return {'success': False, 'message': error_msg}
         
@@ -1764,11 +1772,14 @@ def _stop_reliable_recording():
         
         # Wait for process to finish gracefully
         try:
-        recording_process.wait(timeout=10)
+            recording_process.wait(timeout=15)
         except subprocess.TimeoutExpired:
             print("[Reliable Recording] Graceful stop timeout, force killing...")
             recording_process.kill()
-            recording_process.wait()
+            try:
+                recording_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print("[Reliable Recording] Force kill timeout, process may be stuck")
         
         # Check if file was created and validate
         file_size = 0
