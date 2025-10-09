@@ -469,6 +469,43 @@
       transform: translateY(-2px);
     }
     
+    /* WASD Key Indicators */
+    .key-indicator {
+      background: rgba(15, 25, 35, 0.8);
+      border: 2px solid #cc3300;
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+      text-align: center;
+      transition: all 0.3s;
+      min-width: 30px;
+    }
+    
+    .key-indicator.pressed {
+      background: #cc3300;
+      color: #ffffff;
+      box-shadow: 0 0 8px #cc3300;
+      transform: scale(1.1);
+    }
+    
+    .key-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: 1fr 1fr 1fr;
+      gap: 4px;
+      margin: 8px 0;
+      max-width: 120px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    
+    .key-grid .key-indicator:nth-child(1) { grid-column: 2; grid-row: 1; } /* W */
+    .key-grid .key-indicator:nth-child(2) { grid-column: 1; grid-row: 2; } /* A */
+    .key-grid .key-indicator:nth-child(3) { grid-column: 2; grid-row: 2; } /* S */
+    .key-grid .key-indicator:nth-child(4) { grid-column: 3; grid-row: 2; } /* D */
+    
     .stop {
       border-color: #f00 !important;
       color: #f00 !important;
@@ -630,11 +667,6 @@
       overflow: hidden;
     }
     
-    .batfill {
-      height: 100%;
-      border-radius: 8px;
-      transition: width 0.5s, background 0.5s;
-    }
     
     /* Sound panel removed - now integrated into motor panel */
     
@@ -735,23 +767,50 @@
   </div>
 
   <div class="panel motor">
-    <h3>Motor <span id="mled" class="led warn"></span></h3>
-    <div class="grid">
-      <div></div>
-      <button class="mbtn" onmousedown="go('forward')" onmouseup="stopM()">▲</button>
-      <div></div>
-      <button class="mbtn" onmousedown="go('left')" onmouseup="stopM()">◀</button>
-      <button class="mbtn stop" onclick="estop()">⬛</button>
-      <button class="mbtn" onmousedown="go('right')" onmouseup="stopM()">▶</button>
-      <div></div>
-      <button class="mbtn" onmousedown="go('backward')" onmouseup="stopM()">▼</button>
-      <div></div>
+    <h3>Crawler Control <span id="mled" class="led warn"></span></h3>
+    
+    <!-- WASD Key Indicators -->
+    <div class="key-grid">
+      <div id="key-w" class="key-indicator">W</div>
+      <div id="key-a" class="key-indicator">A</div>
+      <div id="key-s" class="key-indicator">S</div>
+      <div id="key-d" class="key-indicator">D</div>
     </div>
+    
+    <!-- Emergency Stop -->
+    <div class="row" style="margin-top: 8px;">
+      <button class="mbtn stop" onclick="estop()" style="flex:1;font-size: 12px;">EMERGENCY STOP</button>
+    </div>
+    
+    <!-- Individual Motor Speed Control -->
     <div class="row">
-      <span style="font-size: 11px;">Speed:</span>
-      <input id="spd" type="range" class="slider" min="50" max="255" value="150" oninput="document.getElementById('spdv').textContent=this.value" />
+      <span style="font-size: 11px;">Left Motor:</span>
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <button class="btn" onclick="adjustMotorSpeed('left', -5)" style="padding: 4px 8px; font-size: 10px;">-</button>
+        <input id="left-motor-speed" type="range" class="slider" min="0" max="255" value="150" oninput="updateMotorSpeed('left', this.value)" />
+        <span id="left-motor-value" style="min-width:35px;color:#cc3300;font-weight:bold;font-size: 11px;">150</span>
+        <button class="btn" onclick="adjustMotorSpeed('left', 5)" style="padding: 4px 8px; font-size: 10px;">+</button>
+    </div>
+    </div>
+    
+    <div class="row">
+      <span style="font-size: 11px;">Right Motor:</span>
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <button class="btn" onclick="adjustMotorSpeed('right', -5)" style="padding: 4px 8px; font-size: 10px;">-</button>
+        <input id="right-motor-speed" type="range" class="slider" min="0" max="255" value="150" oninput="updateMotorSpeed('right', this.value)" />
+        <span id="right-motor-value" style="min-width:35px;color:#cc3300;font-weight:bold;font-size: 11px;">150</span>
+        <button class="btn" onclick="adjustMotorSpeed('right', 5)" style="padding: 4px 8px; font-size: 10px;">+</button>
+      </div>
+    </div>
+    
+    <!-- Combined Speed Control (for backward compatibility) -->
+    <div class="row">
+      <span style="font-size: 11px;">Combined:</span>
+      <input id="spd" type="range" class="slider" min="50" max="255" value="150" oninput="updateCombinedSpeed(this.value)" />
       <span id="spdv" style="min-width:35px;color:#cc3300;font-weight:bold;font-size: 11px;">150</span>
     </div>
+    
+    <!-- Test Button -->
     <div class="row">
       <button class="btn" onclick="testMotors()" style="flex:1;font-size: 11px;">Test Motors</button>
     </div>
@@ -814,11 +873,6 @@
       <div class="info-item">
         <span class="info-label">FPS:</span>
         <span id="fps">10</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Battery:</span>
-        <span id="battery-display">--%</span>
-        <span id="voltage-display" style="margin-left:5px">(--V)</span>
       </div>
       <div class="info-item">
         <span class="info-label">Bandwidth:</span>
@@ -2394,15 +2448,271 @@ let moving = false;
 let currentDirection = null;
 let moveInterval = null;
 
+// WASD keyboard controls for crawler
+let keysPressed = {
+  w: false,
+  a: false,
+  s: false,
+  d: false
+};
+
+// Individual motor speeds for calibration
+let motorSpeeds = {
+  left: 150,
+  right: 150
+};
+
+// Keyboard event handlers
+function handleKeyDown(event) {
+  const key = event.key.toLowerCase();
+  
+  // Only handle WASD keys
+  if (!['w', 'a', 's', 'd'].includes(key)) return;
+  
+  // Prevent default behavior to avoid page scrolling
+  event.preventDefault();
+  
+  // Mark key as pressed
+  keysPressed[key] = true;
+  
+  // Update visual indicators
+  updateKeyIndicators();
+  
+  // Determine movement direction based on pressed keys
+  const direction = getMovementDirection();
+  
+  if (direction && direction !== currentDirection) {
+    // Stop current movement if changing direction
+    if (moving) {
+      stopM();
+    }
+    
+    // Start new movement
+    moving = true;
+    currentDirection = direction;
+    const speedEl = sid('spd');
+    const speed = speedEl ? speedEl.value : 150;
+    mcmd(direction, speed);
+    log('Keyboard move: ' + direction);
+    
+    // Clear any existing interval
+    if (moveInterval) clearInterval(moveInterval);
+    
+    // Set up periodic movement command to ensure motors keep moving
+    moveInterval = setInterval(() => {
+      if (moving && currentDirection === direction) {
+        const speedEl = sid('spd');
+        const speed = speedEl ? speedEl.value : 150;
+        mcmd(direction, speed);
+      }
+    }, 200); // Send command every 200ms to maintain movement
+  }
+}
+
+function handleKeyUp(event) {
+  const key = event.key.toLowerCase();
+  
+  // Only handle WASD keys
+  if (!['w', 'a', 's', 'd'].includes(key)) return;
+  
+  // Prevent default behavior
+  event.preventDefault();
+  
+  // Mark key as released
+  keysPressed[key] = false;
+  
+  // Update visual indicators
+  updateKeyIndicators();
+  
+  // Check if any movement keys are still pressed
+  const anyKeyPressed = Object.values(keysPressed).some(pressed => pressed);
+  
+  if (!anyKeyPressed && moving) {
+    // All keys released - stop movement
+    stopM();
+  } else {
+    // Some keys still pressed - recalculate direction
+    const direction = getMovementDirection();
+    
+    if (direction && direction !== currentDirection) {
+      // Stop current movement
+      if (moving) {
+        stopM();
+      }
+      
+      // Start new movement
+      moving = true;
+      currentDirection = direction;
+      const speedEl = sid('spd');
+      const speed = speedEl ? speedEl.value : 150;
+      mcmd(direction, speed);
+      log('Keyboard move: ' + direction);
+      
+      // Clear any existing interval
+      if (moveInterval) clearInterval(moveInterval);
+      
+      // Set up periodic movement command
+      moveInterval = setInterval(() => {
+        if (moving && currentDirection === direction) {
+          const speedEl = sid('spd');
+          const speed = speedEl ? speedEl.value : 150;
+          mcmd(direction, speed);
+        }
+      }, 200);
+    }
+  }
+}
+
+function getMovementDirection() {
+  // Determine movement direction based on pressed keys
+  if (keysPressed.w && keysPressed.a) return 'forward-left';
+  if (keysPressed.w && keysPressed.d) return 'forward-right';
+  if (keysPressed.s && keysPressed.a) return 'backward-left';
+  if (keysPressed.s && keysPressed.d) return 'backward-right';
+  if (keysPressed.w) return 'forward';
+  if (keysPressed.s) return 'backward';
+  if (keysPressed.a) return 'left';
+  if (keysPressed.d) return 'right';
+  return null;
+}
+
+function updateKeyIndicators() {
+  // Update visual indicators for pressed keys
+  const keyElements = {
+    w: sid('key-w'),
+    a: sid('key-a'),
+    s: sid('key-s'),
+    d: sid('key-d')
+  };
+  
+  Object.keys(keyElements).forEach(key => {
+    const element = keyElements[key];
+    if (element) {
+      if (keysPressed[key]) {
+        element.classList.add('pressed');
+      } else {
+        element.classList.remove('pressed');
+      }
+    }
+  });
+}
+
+// Individual motor speed control functions
+function updateMotorSpeed(motor, speed) {
+  motorSpeeds[motor] = parseInt(speed);
+  
+  // Update display
+  const valueElement = sid(motor + '-motor-value');
+  if (valueElement) {
+    valueElement.textContent = speed;
+  }
+  
+  // Update combined speed slider to match average
+  const avgSpeed = Math.round((motorSpeeds.left + motorSpeeds.right) / 2);
+  const combinedSlider = sid('spd');
+  const combinedValue = sid('spdv');
+  
+  if (combinedSlider) {
+    combinedSlider.value = avgSpeed;
+  }
+  if (combinedValue) {
+    combinedValue.textContent = avgSpeed;
+  }
+  
+  log(`Motor ${motor} speed: ${speed}`);
+}
+
+function adjustMotorSpeed(motor, delta) {
+  const currentSpeed = motorSpeeds[motor];
+  const newSpeed = Math.max(0, Math.min(255, currentSpeed + delta));
+  
+  // Update slider
+  const slider = sid(motor + '-motor-speed');
+  if (slider) {
+    slider.value = newSpeed;
+  }
+  
+  // Update speed
+  updateMotorSpeed(motor, newSpeed);
+}
+
+function updateCombinedSpeed(speed) {
+  const speedValue = parseInt(speed);
+  
+  // Update both motor speeds to match combined
+  motorSpeeds.left = speedValue;
+  motorSpeeds.right = speedValue;
+  
+  // Update individual sliders
+  const leftSlider = sid('left-motor-speed');
+  const rightSlider = sid('right-motor-speed');
+  const leftValue = sid('left-motor-value');
+  const rightValue = sid('right-motor-value');
+  
+  if (leftSlider) leftSlider.value = speedValue;
+  if (rightSlider) rightSlider.value = speedValue;
+  if (leftValue) leftValue.textContent = speedValue;
+  if (rightValue) rightValue.textContent = speedValue;
+  
+  log(`Combined speed updated: ${speedValue}`);
+}
+
 async function mcmd(dir, speed) {
   const led = sid('mled');
   if (led) led.className = 'led warn';
   
   try {
-    const response = await fetch('/motor/' + dir, {
+    // For crawler, send individual motor speeds
+    let leftSpeed, rightSpeed;
+    
+    switch(dir) {
+      case 'forward':
+        leftSpeed = motorSpeeds.left;
+        rightSpeed = motorSpeeds.right;
+        break;
+      case 'backward':
+        leftSpeed = -motorSpeeds.left;
+        rightSpeed = -motorSpeeds.right;
+        break;
+      case 'left':
+        leftSpeed = -motorSpeeds.left;
+        rightSpeed = motorSpeeds.right;
+        break;
+      case 'right':
+        leftSpeed = motorSpeeds.left;
+        rightSpeed = -motorSpeeds.right;
+        break;
+      case 'forward-left':
+        leftSpeed = Math.round(motorSpeeds.left * 0.5);
+        rightSpeed = motorSpeeds.right;
+        break;
+      case 'forward-right':
+        leftSpeed = motorSpeeds.left;
+        rightSpeed = Math.round(motorSpeeds.right * 0.5);
+        break;
+      case 'backward-left':
+        leftSpeed = -Math.round(motorSpeeds.left * 0.5);
+        rightSpeed = -motorSpeeds.right;
+        break;
+      case 'backward-right':
+        leftSpeed = -motorSpeeds.left;
+        rightSpeed = -Math.round(motorSpeeds.right * 0.5);
+        break;
+      case 'stop':
+      default:
+        leftSpeed = 0;
+        rightSpeed = 0;
+        break;
+    }
+    
+    const response = await fetch('/motor/crawler', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({speed: parseInt(speed)})
+      body: JSON.stringify({
+        direction: dir,
+        leftSpeed: leftSpeed,
+        rightSpeed: rightSpeed
+      })
     });
     const result = await response.json();
     
@@ -2412,6 +2722,7 @@ async function mcmd(dir, speed) {
   } catch (e) {
     const led = sid('mled');
     if (led) led.className = 'led err';
+    console.error('Motor command error:', e);
   }
 }
 
@@ -3291,60 +3602,6 @@ async function snap() {
   }
 }
 
-// Battery monitoring
-async function updateBattery() {
-  try {
-    const response = await fetch('/battery');
-    const battery = await response.json();
-    
-    // Update battery percentage display in video info bar
-    const batteryDisplay = sid('battery-display');
-    if (batteryDisplay) {
-      batteryDisplay.textContent = battery.percentage.toFixed(0) + '%';
-      // Add color coding based on battery level
-      if (battery.percentage > 50) {
-        batteryDisplay.style.color = '#0f0'; // Green
-      } else if (battery.percentage > 20) {
-        batteryDisplay.style.color = '#ff0'; // Yellow
-      } else {
-        batteryDisplay.style.color = '#f00'; // Red
-      }
-    }
-    
-    // Update voltage display in video info bar
-    const voltageDisplay = sid('voltage-display');
-    if (voltageDisplay && battery.voltage) {
-      voltageDisplay.textContent = '(' + battery.voltage.toFixed(1) + 'V)';
-      // Add color coding based on voltage level
-      if (battery.voltage > 11.5) {
-        voltageDisplay.style.color = '#0f0'; // Green
-      } else if (battery.voltage > 10.5) {
-        voltageDisplay.style.color = '#ff0'; // Yellow
-      } else {
-        voltageDisplay.style.color = '#f00'; // Red
-      }
-    }
-    
-    // Update battery bar (if it exists in motor panel - for backward compatibility)
-    const fill = sid('batf');
-    const percentage = sid('batp');
-    
-    if (fill && percentage) {
-      fill.style.width = battery.percentage + '%';
-      percentage.textContent = battery.percentage.toFixed(0) + '%';
-      
-      if (battery.percentage > 50) {
-        fill.style.background = '#0f0';
-      } else if (battery.percentage > 20) {
-        fill.style.background = '#ff0';
-      } else {
-        fill.style.background = '#f00';
-      }
-    }
-  } catch (e) {
-    console.error('Battery update error:', e);
-  }
-}
 
 // Audio functions
 async function toggleMicrophone() {
@@ -4364,8 +4621,10 @@ async function init() {
   
   // Set initial state
   setLang('en');
-  updateBattery();
-  setInterval(updateBattery, 60000); // Update battery every minute
+  
+  // Add keyboard event listeners for WASD controls
+  document.addEventListener('keydown', handleKeyDown);
+  document.addEventListener('keyup', handleKeyUp);
   
   // Load sound names from localStorage
   loadSoundNames();
