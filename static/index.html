@@ -213,10 +213,9 @@
       display: grid;
       grid-template-areas:
         "tts tts tts"
-        "motor video audio"
-        "motor log log";
+        "motor video audio";
       grid-template-columns: 312px 1fr 320px;
-      grid-template-rows: 70px minmax(400px, 1fr) 60px;
+      grid-template-rows: 70px minmax(400px, 1fr);
       gap: 12px;
       padding: 12px;
       min-height: 100vh;
@@ -713,14 +712,9 @@
     }
     
     .log {
-      grid-area: log;
       background: rgba(0, 0, 0, 0.9);
       border: 2px solid #cc3300;
       border-radius: 6px;
-      padding: 8px;
-      font-size: 10px;
-      overflow-y: auto;
-      max-height: 50px;
       font-family: 'Courier New', monospace;
       color: #cccccc;
     }
@@ -917,6 +911,9 @@
       <span id="uptime" style="margin-left:15px;font-size:10px;opacity:0.8">Uptime: 00:00:00</span>
       <span id="auto-stream-status" style="margin-left:15px;font-size:10px;opacity:0.8">Auto-start: Enabled</span>
     </div>
+    
+    <!-- Log bar moved here -->
+    <div id="log" class="panel log" style="margin-top:8px;padding:8px;font-size:11px;">Avatar Tank System Ready</div>
   </div>
 
   <div class="panel audio">
@@ -962,9 +959,6 @@
     </div>
 
   </div>
-
-
-  <div id="log" class="panel log">Avatar Tank System Ready</div>
 </div>
 
 <script>
