@@ -487,6 +487,21 @@
       justify-content: center;
     }
     
+    .key-indicator:hover {
+      background: rgba(204, 51, 0, 0.3);
+      border-color: #ff6600;
+      box-shadow: 0 0 12px rgba(204, 51, 0, 0.5);
+      transform: scale(1.05);
+      cursor: pointer;
+    }
+    
+    .key-indicator:active {
+      background: #cc3300;
+      color: #ffffff;
+      box-shadow: 0 0 8px #cc3300;
+      transform: scale(0.95);
+    }
+    
     .key-indicator.pressed {
       background: #cc3300;
       color: #ffffff;
@@ -775,10 +790,10 @@
     
     <!-- WASD Key Indicators -->
     <div class="key-grid">
-      <div id="key-w" class="key-indicator">W</div>
-      <div id="key-a" class="key-indicator">A</div>
-      <div id="key-s" class="key-indicator">S</div>
-      <div id="key-d" class="key-indicator">D</div>
+      <div id="key-w" class="key-indicator" onmousedown="handleMouseKeyDown('w')" onmouseup="handleMouseKeyUp('w')" onmouseleave="handleMouseKeyUp('w')">W</div>
+      <div id="key-a" class="key-indicator" onmousedown="handleMouseKeyDown('a')" onmouseup="handleMouseKeyUp('a')" onmouseleave="handleMouseKeyUp('a')">A</div>
+      <div id="key-s" class="key-indicator" onmousedown="handleMouseKeyDown('s')" onmouseup="handleMouseKeyUp('s')" onmouseleave="handleMouseKeyUp('s')">S</div>
+      <div id="key-d" class="key-indicator" onmousedown="handleMouseKeyDown('d')" onmouseup="handleMouseKeyUp('d')" onmouseleave="handleMouseKeyUp('d')">D</div>
     </div>
     
     <!-- Emergency Stop -->
@@ -2611,6 +2626,25 @@ function updateKeyIndicators() {
       }
     }
   });
+}
+
+// Mouse event handlers for WASD buttons
+function handleMouseKeyDown(key) {
+  // Simulate keydown event
+  const event = {
+    key: key,
+    preventDefault: () => {}
+  };
+  handleKeyDown(event);
+}
+
+function handleMouseKeyUp(key) {
+  // Simulate keyup event
+  const event = {
+    key: key,
+    preventDefault: () => {}
+  };
+  handleKeyUp(event);
 }
 
 // Individual motor speed control functions
