@@ -49,38 +49,22 @@ class PiperTTS:
         onnx = sorted(glob.glob(os.path.join(lang_dir, "*.onnx")))
         return onnx[0] if onnx else None
 
-    def _speak_romanian_question(self, text):
-        """Use espeak-ng directly for Romanian questions with proper intonation"""
-        try:
-            # Use Romanian voice with proper question intonation
-            # Add slight pause before question mark for better intonation
-            text_with_pause = text.rstrip('?').strip() + " ?"
-            
-            es = subprocess.Popen([
-                "espeak-ng", 
-                "-v", "ro",           # Romanian voice
-                "-s", "160",          # Slower speed for questions
-                "-p", "50",           # Higher pitch for questions
-                "-a", "100",          # Amplitude
-                "--stdout", 
-                text_with_pause
-            ], stdout=subprocess.PIPE)
-            
-            ap = subprocess.Popen([
-                "aplay", "-q", "-D", SPK_PLUG
-            ], stdin=es.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=False)
-            
-            es.stdout.close()
-            ap.wait(timeout=20)
-            es.wait(timeout=20)
-            
-            if ap.returncode != 0:
-                return {"ok": False, "msg": f"espeak/aplay error: {ap.stderr.read().decode('utf-8','ignore') if ap.stderr else 'fail'}"}
-            
-            return {"ok": True, "msg": "Spoken (espeak-ng Romanian question)"}
-            
-        except Exception as e:
-            return {"ok": False, "msg": f"Romanian question TTS error: {e}"}
+    def _fix_romanian_question_intonation(self, text):
+        """Fix Romanian question intonation by preprocessing text for Piper"""
+        # Remove the question mark temporarily
+        text_without_q = text.rstrip('?').strip()
+        
+        # Method 1: Add emphasis and pause before question mark
+        # This creates a natural pause that helps with intonation
+        enhanced_text = f"{text_without_q}... ?"
+        
+        # Method 2: Alternative - add stress markers (if Piper supports them)
+        # enhanced_text = f"{text_without_q}?"
+        
+        # Method 3: Alternative - add punctuation for emphasis
+        # enhanced_text = f"{text_without_q}?"
+        
+        return enhanced_text
 
     def status(self):
         return {
@@ -100,10 +84,8 @@ class PiperTTS:
         
         # Fix Romanian question intonation
         is_romanian_question = self.current_language == 'ro' and text.endswith('?')
-        
-        # For Romanian questions, use espeak-ng directly for better intonation
         if is_romanian_question:
-            return self._speak_romanian_question(text)
+            text = self._fix_romanian_question_intonation(text)
 
         lang_dir = self.languages[self.current_language]['dir']
         # 1) Piper CLI?
@@ -113,8 +95,13 @@ class PiperTTS:
                 return {"ok": False, "msg": f"no Piper model/cfg in {lang_dir}"}
             outwav = "/tmp/tts.wav"
             try:
+                # Add length scale for Romanian questions to improve intonation
+                cmd = [self.bin, "--model", model, "--config", cfg, "--output_file", outwav]
+                if is_romanian_question:
+                    cmd.extend(["--length_scale", "0.8"])  # Slower speech for questions
+                
                 p = subprocess.run(
-                    [self.bin, "--model", model, "--config", cfg, "--output_file", outwav],
+                    cmd,
                     input=(text+"\n"), text=True,
                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False
                 )
@@ -136,8 +123,13 @@ class PiperTTS:
                 return {"ok": False, "msg": f"no Piper model in {lang_dir}"}
             outwav = "/tmp/tts.wav"
             try:
+                # Add length scale for Romanian questions to improve intonation
+                cmd = [self.bin, "--model", model, "--output_file", outwav]
+                if is_romanian_question:
+                    cmd.extend(["--length_scale", "0.8"])  # Slower speech for questions
+                
                 p = subprocess.run(
-                    [self.bin, "--model", model, "--output_file", outwav],
+                    cmd,
                     input=(text+"\n"), text=True,
                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False
                 )
