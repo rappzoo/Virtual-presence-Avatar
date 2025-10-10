@@ -872,7 +872,7 @@ def play_sound(sound_id):
                     except:
                         return jsonify({"ok": False, "msg": f"Sound file not found and no system beep available"})
             else:
-            return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
+                return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
         
         # Use mpg123 or ffplay to play MP3 files
         try:
@@ -1797,7 +1797,7 @@ def _stop_reliable_recording():
             recording_duration = (datetime.datetime.now() - recording_start_time).total_seconds()
         
         if file_valid:
-        result = {
+            result = {
             'success': True,
             'message': f'Recording stopped. Duration: {recording_duration:.1f}s, Size: {file_size / (1024*1024):.1f}MB',
             'filename': recording_filename,
