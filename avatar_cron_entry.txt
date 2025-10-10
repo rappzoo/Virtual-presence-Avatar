@@ -1,0 +1,1 @@
+@reboot sleep 30 && cd /home/havatar/Avatar-robot && /usr/local/bin/mediamtx config/mediamtx.yml > mediamtx.log 2>&1 & sleep 3 && python3 modules/mediamtx_main.py > flask.log 2>&1 &
