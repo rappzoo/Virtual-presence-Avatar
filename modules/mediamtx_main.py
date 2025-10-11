@@ -79,7 +79,8 @@ except ImportError as e:
 # Create Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'avatar_tank_mediamtx_secret_key'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# Socket.IO disabled - using simple HTTP polling instead
+# socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Global state
 running = False
@@ -986,54 +987,58 @@ def system_status():
 
 # ============== WebSocket Events ==============
 
-@socketio.on('connect')
-def handle_connect():
-    """Handle WebSocket connection"""
-    print(f"[WebSocket] Client connected: {request.sid}")
-    emit('audio_status', {'status': 'connected'})
+# Socket.IO disabled
+# @socketio.on('connect')
+# def handle_connect():
+#     """Handle WebSocket connection"""
+#     print(f"[WebSocket] Client connected: {request.sid}")
+#     emit('audio_status', {'status': 'connected'})
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Handle WebSocket disconnection"""
-    print(f"[WebSocket] Client disconnected: {request.sid}")
+# Socket.IO disabled
+# @socketio.on('disconnect')
+# def handle_disconnect():
+#     """Handle WebSocket disconnection"""
+#     print(f"[WebSocket] Client disconnected: {request.sid}")
 
-@socketio.on('start_simple_audio')
-def handle_start_audio():
-    """Handle start audio streaming request"""
-    try:
-        print("[WebSocket] Starting audio streaming")
-        emit('audio_status', {'status': 'started'})
-        
-        # For now, just send a test audio chunk
-        # In a real implementation, you would capture audio and send it
-        test_audio_data = b'\x00' * 1024  # Dummy audio data
-        import base64
-        encoded_data = base64.b64encode(test_audio_data).decode('utf-8')
-        emit('audio_data', {'data': encoded_data})
-        
-    except Exception as e:
-        print(f"[WebSocket] Audio start error: {e}")
-        emit('audio_status', {'status': 'error', 'message': str(e)})
+# Socket.IO disabled
+# @socketio.on('start_simple_audio')
+# def handle_start_audio():
+#     """Handle start audio streaming request"""
+#     try:
+#         print("[WebSocket] Starting audio streaming")
+#         emit('audio_status', {'status': 'started'})
+#         
+#         # For now, just send a test audio chunk
+#         # In a real implementation, you would capture audio and send it
+#         test_audio_data = b'\x00' * 1024  # Dummy audio data
+#         import base64
+#         encoded_data = base64.b64encode(test_audio_data).decode('utf-8')
+#         emit('audio_data', {'data': encoded_data})
+#         
+#     except Exception as e:
+#         print(f"[WebSocket] Audio start error: {e}")
+#         emit('audio_status', {'status': 'error', 'message': str(e)})
 
-@socketio.on('stop_simple_audio')
-def handle_stop_audio():
-    """Handle stop audio streaming request"""
-    try:
-        print("[WebSocket] Stopping audio streaming")
-        emit('audio_status', {'status': 'stopped'})
-    except Exception as e:
-        print(f"[WebSocket] Audio stop error: {e}")
-        emit('audio_status', {'status': 'error', 'message': str(e)})
+# Socket.IO disabled
+# @socketio.on('stop_simple_audio')
+# def handle_stop_audio():
+#     """Handle stop audio streaming request"""
+#     try:
+#         print("[WebSocket] Stopping audio streaming")
+#         emit('audio_status', {'status': 'stopped'})
+#     except Exception as e:
+#         print(f"[WebSocket] Audio stop error: {e}")
+#         emit('audio_status', {'status': 'error', 'message': str(e)})
 
-@socketio.on('test_audio_tone')
-def handle_test_tone():
-    """Handle test audio tone request"""
-    try:
-        print("[WebSocket] Playing test tone")
-        emit('audio_status', {'status': 'test_tone'})
-    except Exception as e:
-        print(f"[WebSocket] Test tone error: {e}")
-        emit('audio_status', {'status': 'error', 'message': str(e)})
+# @socketio.on('test_audio_tone')
+# def handle_test_tone():
+#     """Handle test audio tone request"""
+#     try:
+#         print("[WebSocket] Playing test tone")
+#         emit('audio_status', {'status': 'test_tone'})
+#     except Exception as e:
+#         print(f"[WebSocket] Test tone error: {e}")
+#         emit('audio_status', {'status': 'error', 'message': str(e)})
 
 @app.route('/api/status')
 def get_status():
@@ -1678,8 +1683,8 @@ def main():
     print("  - http://192.168.68.107:5000 (4G router)")
     print("  - http://172.25.216.108:5000 (mobile network)")
     
-    # Start the web server
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    # Start the web server (Socket.IO disabled)
+    app.run(host='0.0.0.0', port=5000, debug=False)
 
 
 def _start_reliable_recording():

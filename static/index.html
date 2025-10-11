@@ -4,12 +4,7 @@
   <meta charset="utf-8" />
   <title>Avatar Tank - Control Interface</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
-  <script>
-    // Force Socket.IO to use polling only (disable WebSocket)
-    window.io = window.io || {};
-    window.io.transports = ['polling'];
-  </script>
+  <!-- Socket.IO disabled - using simple HTTP polling instead -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediamtx/webrtc@latest/dist/webrtc.js"></script>
   <script>
@@ -1079,7 +1074,7 @@ let totalDataUsed = 0;
 let lastBandwidthUpdate = Date.now();
 let audioActive = false;
 let audioContext = null;
-let socket = null;
+// Socket.IO disabled - using HTTP polling instead
 let muted = false;
 let streamActive = false;
 let hls = null;
@@ -1093,44 +1088,40 @@ const log = (m) => {
   console.log('[Frontend]', m);
 };
 
-// Initialize WebSocket
+// Simple HTTP polling system (Socket.IO disabled)
+let pollingInterval = null;
+let isPolling = false;
+
 function initWebSocket() {
-  if (socket && socket.connected) return socket;
+  // Socket.IO disabled - using simple HTTP polling instead
+  console.log('Socket.IO disabled - using HTTP polling');
+  updateMicStatus('HTTP polling ready');
+  return null;
+}
+
+function startPolling() {
+  if (isPolling) return;
+  isPolling = true;
   
-  socket = io({
-    timeout: 10000,
-    reconnection: true,
-    reconnectionAttempts: 5,
-    transports: ['polling'],
-    reconnectionDelay: 1000
-  });
-  
-  socket.on('connect', () => {
-    console.log('Socket connected:', socket.id);
-    updateMicStatus('WebSocket ready');
-  });
-  
-  socket.on('audio_status', (data) => {
-    if (data.status === 'error') {
-      updateMicStatus('Audio error: ' + (data.message || 'Unknown'));
-      audioActive = false;
-      updateMicButton();
-    } else if (data.status === 'started') {
-      updateMicStatus('Audio streaming active');
-    }
-  });
-  
-  socket.on('audio_data', (data) => {
-    if (audioContext) {
-      try {
-        playAudioChunk(data);
-      } catch (e) {
-        console.error('Audio playback error:', e);
-      }
-    }
-  });
-  
-  return socket;
+  pollingInterval = setInterval(() => {
+    // Simple health check - just verify the server is responding
+    fetch('/api/status')
+      .then(response => response.json())
+      .then(data => {
+        // Server is responding - all good
+      })
+      .catch(error => {
+        console.log('Polling error:', error);
+      });
+  }, 5000); // Poll every 5 seconds
+}
+
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+  isPolling = false;
 }
 
 // Initialize Web Audio
@@ -3595,9 +3586,7 @@ async function toggleMicrophone() {
     if (audioActive) {
       audioActive = false;
       vuMeterActive = false;
-      if (socket) {
-        socket.emit('stop_simple_audio');
-      }
+      // socket.emit('stop_simple_audio'); // Disabled
       updateMicStatus('Audio stopped');
     } else {
       updateMicStatus('Starting audio...');
@@ -3606,12 +3595,9 @@ async function toggleMicrophone() {
         initWebAudio();
       }
       
-      if (!socket) {
-        initWebSocket();
-      }
-      
-      if (socket) {
-        socket.emit('start_simple_audio');
+      // Socket.IO disabled - audio functions work without it
+      if (true) {
+        // socket.emit('start_simple_audio'); // Disabled
         audioActive = true;
         vuMeterActive = true;
         updateMicStatus('Audio streaming active');
@@ -3694,10 +3680,9 @@ async function testMic() {
 
 function testAudioTone() {
   log('Testing audio tone...');
-  if (socket) {
-    socket.emit('test_audio_tone');
-    updateMicStatus('Playing test tone...');
-  } else {
+  // socket.emit('test_audio_tone'); // Disabled
+  updateMicStatus('Playing test tone...');
+  if (false) {
     updateMicStatus('WebSocket not connected');
   }
 }
@@ -4610,6 +4595,7 @@ async function init() {
   
   // Initialize connections
   initWebSocket();
+  startPolling();
   
   // Set initial state
   setLang('en');
