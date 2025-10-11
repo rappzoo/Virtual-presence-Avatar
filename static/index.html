@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Avatar Tank - Control Interface</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediamtx/webrtc@latest/dist/webrtc.js"></script>
   <script>
@@ -954,7 +954,7 @@
       </div>
     </div>
 
-  </div>
+    </div>
 </div>
 
 <script>
@@ -1741,7 +1741,7 @@ async function updateBandwidth() {
       
       // Get actual stream bandwidth from system
       try {
-        const response = await fetch('/api/stream/bandwidth');
+        const response = await fetch('/api/stream/bandwidth', { timeout: 5000 });
         if (response.ok) {
           const data = await response.json();
           realBandwidthKBps = data.stream_bandwidth_kbps || 0;

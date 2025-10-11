@@ -865,7 +865,6 @@ def play_sound(sound_id):
                     print(f"[Sound] Using default sound for ID {sound_id}: {sound_path}")
                 else:
                     # Create a simple beep sound using system beep
-                    import subprocess
                     try:
                         subprocess.run(['beep', '-f', '800', '-l', '200'], check=False, capture_output=True)
                         return jsonify({"ok": True, "msg": f"System beep played for sound {sound_id + 1}"})
@@ -2178,17 +2177,23 @@ def health_check():
         
         # 3. Check camera device availability
         camera_available = False
+        camera_device = "/dev/video0"  # Default
         try:
-            camera_device = "/dev/video0"  # Default
-            result = subprocess.run(['fuser', camera_device], capture_output=True, timeout=5)
-            camera_available = result.returncode != 0  # Available if no processes using it
+            # Check if camera device exists
+            import os
+            if os.path.exists(camera_device):
+                # If camera is being used by a process, it's working
+                result = subprocess.run(['fuser', camera_device], capture_output=True, timeout=5)
+                camera_available = result.returncode == 0  # Available if processes are using it
+            else:
+                camera_available = False
         except Exception as e:
             health_status['checks']['camera'] = {'status': 'error', 'error': str(e)}
         
         health_status['checks']['camera'] = {
             'status': 'healthy' if camera_available else 'unhealthy',
             'available': camera_available,
-            'device': camera_device
+            'device': camera_device if camera_available else None
         }
         
         # 4. Check WebRTC endpoint
