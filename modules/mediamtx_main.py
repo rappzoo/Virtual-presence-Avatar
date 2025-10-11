@@ -1706,23 +1706,24 @@ def _start_reliable_recording():
         # Get audio device - use different device to avoid conflict with main stream
         audio_device = 'default'  # Use default device instead of plughw:3,0
         
-        # Create recording command using stream input instead of camera directly
-        # This approach avoids camera device conflicts
-        rtsp_url = 'rtsp://localhost:8554/stream'
-        
+        # Create recording command using camera directly for better reliability
+        # This avoids RTSP stream issues that can cause corruption
         cmd = [
             'ffmpeg', '-nostdin',
-            '-rtsp_transport', 'tcp',  # Use TCP for reliability
-            '-i', rtsp_url,  # Use stream instead of camera
-            '-f', 'alsa', '-i', audio_device,  # Add audio input
+            '-f', 'v4l2', '-i', camera_device,  # Direct camera input
+            '-f', 'alsa', '-i', audio_device,   # Audio input
             '-c:v', 'libx264',
-            '-preset', 'fast',  # Faster encoding for recording
-            '-crf', '23',       # Good quality
-            '-c:a', 'aac',      # Audio codec
-            '-b:a', '128k',     # Audio bitrate
+            '-preset', 'ultrafast',  # Fastest encoding to prevent buffer issues
+            '-crf', '28',            # Slightly lower quality for speed
+            '-c:a', 'aac',           # Audio codec
+            '-b:a', '128k',          # Audio bitrate
+            '-r', '20',              # Match stream framerate
+            '-s', '1280x720',        # Fixed resolution
             '-avoid_negative_ts', 'make_zero',  # Fix timestamp issues
-            '-f', 'mp4',        # Force MP4 format
-            '-movflags', '+faststart',  # Optimize for streaming
+            '-fflags', '+genpts',    # Generate presentation timestamps
+            '-f', 'mp4',             # Force MP4 format
+            '-movflags', '+faststart+empty_moov',  # Optimize for streaming
+            '-y',                    # Overwrite output file
             recording_filename
         ]
         
@@ -1736,8 +1737,8 @@ def _start_reliable_recording():
             stdin=subprocess.PIPE
         )
         
-        # Wait longer for RTSP connection to establish
-        time.sleep(5)
+        # Wait for FFmpeg to initialize properly
+        time.sleep(3)  # Reduced wait time for direct camera input
         if recording_process.poll() is not None:
             # Get error output
             stderr_output = ""
@@ -1772,18 +1773,25 @@ def _stop_reliable_recording():
         
         print(f"[Reliable Recording] Stopping recording process PID: {recording_process.pid}")
         
-        # Send quit command to FFmpeg
-        recording_process.stdin.write(b'q\n')
-        recording_process.stdin.flush()
+        # Send quit command to FFmpeg for graceful termination
+        try:
+            if recording_process.stdin:
+                recording_process.stdin.write(b'q\n')
+                recording_process.stdin.flush()
+                recording_process.stdin.close()
+        except Exception as e:
+            print(f"[Reliable Recording] Error sending quit command: {e}")
         
         # Wait for process to finish gracefully
         try:
-            recording_process.wait(timeout=15)
+            recording_process.wait(timeout=10)  # Reduced timeout
+            print("[Reliable Recording] Process terminated gracefully")
         except subprocess.TimeoutExpired:
             print("[Reliable Recording] Graceful stop timeout, force killing...")
             recording_process.kill()
             try:
-                recording_process.wait(timeout=5)
+                recording_process.wait(timeout=3)  # Shorter force kill timeout
+                print("[Reliable Recording] Process force killed")
             except subprocess.TimeoutExpired:
                 print("[Reliable Recording] Force kill timeout, process may be stuck")
         
@@ -1792,21 +1800,29 @@ def _stop_reliable_recording():
         file_valid = False
         if recording_filename and os.path.exists(recording_filename):
             file_size = os.path.getsize(recording_filename)
-            # Quick validation - file should be at least 1KB and have video content
-            file_valid = file_size > 1000
+            # Enhanced validation - file should be at least 10KB and have reasonable size for duration
+            recording_duration = 0
+            if recording_start_time:
+                recording_duration = (datetime.datetime.now() - recording_start_time).total_seconds()
+            
+            # Minimum size check (10KB) and reasonable size for duration (at least 1KB per second)
+            min_size = max(10000, int(recording_duration * 1000))  # At least 1KB per second
+            file_valid = file_size > min_size
+            
+            print(f"[Reliable Recording] File validation: {file_size} bytes, {recording_duration:.1f}s, valid: {file_valid}")
         
         recording_duration = 0
         if recording_start_time:
             recording_duration = (datetime.datetime.now() - recording_start_time).total_seconds()
         
         if file_valid:
-        result = {
-            'success': True,
-            'message': f'Recording stopped. Duration: {recording_duration:.1f}s, Size: {file_size / (1024*1024):.1f}MB',
-            'filename': recording_filename,
-            'duration': recording_duration,
-            'size': file_size
-        }
+            result = {
+                'success': True,
+                'message': f'Recording stopped successfully. Duration: {recording_duration:.1f}s, Size: {file_size / (1024*1024):.1f}MB',
+                'filename': recording_filename,
+                'duration': recording_duration,
+                'size': file_size
+            }
         else:
             # File is corrupted or too small, remove it
             if recording_filename and os.path.exists(recording_filename):
@@ -1821,7 +1837,7 @@ def _stop_reliable_recording():
                 'filename': None,
                 'duration': recording_duration,
                 'size': 0
-        }
+            }
         
         print(f"[Reliable Recording] ✓ {result['message']}")
         
