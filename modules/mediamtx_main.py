@@ -1041,7 +1041,6 @@ def get_status():
         streaming_status = get_streaming_status()
         
         # Check if FFmpeg is actually running AND if MediaMTX stream is active
-        import subprocess
         import requests
         ffmpeg_running = False
         mediamtx_stream_active = False
@@ -1120,8 +1119,6 @@ def start_stream_api():
 def refresh_stream_api():
     """Complete stream refresh - stop all FFmpeg processes and restart with audio"""
     try:
-        import subprocess
-        import time
         
         print("[Stream Refresh] Starting complete stream refresh...")
         
@@ -1273,7 +1270,6 @@ def start_recording_api():
         global recording_process, recording_start_time, recording_filename
         
         # First, check for any orphaned FFmpeg recording processes
-        import subprocess
         try:
             # Check for FFmpeg processes that are recording
             result = subprocess.run(['pgrep', '-f', 'ffmpeg.*record'], capture_output=True, text=True)
@@ -1394,7 +1390,6 @@ def get_system_state():
     """Get complete system state"""
     try:
         from modules.avatar_state import get_full_state, get_stream_status
-        import subprocess
         
         state = get_full_state()
         
@@ -1817,7 +1812,7 @@ def _stop_reliable_recording():
                 'filename': None,
                 'duration': recording_duration,
                 'size': 0
-            }
+        }
         
         print(f"[Reliable Recording] ✓ {result['message']}")
         
@@ -1853,8 +1848,6 @@ def get_network_bandwidth():
     global last_network_stats, last_bandwidth_time
     
     try:
-        import subprocess
-        import time
         
         current_time = time.time()
         
@@ -1928,8 +1921,6 @@ def get_stream_bandwidth():
     global last_stream_stats, last_stream_time
     
     try:
-        import subprocess
-        import time
         
         current_time = time.time()
         
@@ -2453,7 +2444,6 @@ def stream_health_monitor_thread():
                 if state_info.process_id:
                     try:
                         # Check if process exists
-                        import subprocess
                         subprocess.run(['kill', '-0', str(state_info.process_id)], 
                                      capture_output=True, timeout=2)
                         

@@ -1048,9 +1048,14 @@ class MediaMTXCameraManager:
         try:
             # Don't auto-initialize camera for status check
             with self.lock:
+                # Get camera device even if not initialized
+                device = self.camera_device
+                if device is None:
+                    device = get_camera_device() or "/dev/video0"
+                
                 return {
                     "ok": self.camera is not None and not isinstance(self.camera, DummyCamera),
-                    "device": self.camera_device,
+                    "device": device,
                     "resolution": current_resolution,
                     "framerate": current_framerate,
                     "frame_counter": self._frame_counter,
