@@ -15,6 +15,10 @@ from pathlib import Path
 from flask import Flask, Response, request, jsonify, send_file, render_template_string
 from flask_socketio import SocketIO, emit
 
+# Monkey patch eventlet for WebSocket support
+import eventlet
+eventlet.monkey_patch()
+
 
 # Ensure all modules can be imported
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -75,7 +79,7 @@ except ImportError as e:
 # Create Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'avatar_tank_mediamtx_secret_key'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Global state
 running = False
@@ -871,7 +875,7 @@ def play_sound(sound_id):
                     except:
                         return jsonify({"ok": False, "msg": f"Sound file not found and no system beep available"})
             else:
-                return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
+            return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
         
         # Use mpg123 or ffplay to play MP3 files
         try:
@@ -1791,7 +1795,7 @@ def _stop_reliable_recording():
             recording_duration = (datetime.datetime.now() - recording_start_time).total_seconds()
         
         if file_valid:
-            result = {
+        result = {
             'success': True,
             'message': f'Recording stopped. Duration: {recording_duration:.1f}s, Size: {file_size / (1024*1024):.1f}MB',
             'filename': recording_filename,
@@ -2168,13 +2172,13 @@ def health_check():
         
         # 3. Check camera device availability
         camera_available = False
-        camera_device = "/dev/video0"  # Default
+            camera_device = "/dev/video0"  # Default
         try:
             # Check if camera device exists
             import os
             if os.path.exists(camera_device):
                 # If camera is being used by a process, it's working
-                result = subprocess.run(['fuser', camera_device], capture_output=True, timeout=5)
+            result = subprocess.run(['fuser', camera_device], capture_output=True, timeout=5)
                 camera_available = result.returncode == 0  # Available if processes are using it
             else:
                 camera_available = False
