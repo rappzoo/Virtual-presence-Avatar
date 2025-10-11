@@ -1714,12 +1714,9 @@ def _start_reliable_recording():
             'ffmpeg', '-nostdin',
             '-rtsp_transport', 'tcp',           # Use TCP for reliability
             '-i', rtsp_url,                     # Use RTSP stream as input
-            '-f', 'alsa', '-i', audio_device,   # Audio input
-            '-c:v', 'libx264',
+            '-c:v', 'libx264',                  # Video codec only
             '-preset', 'ultrafast',             # Fastest encoding
             '-crf', '28',                       # Good quality/speed balance
-            '-c:a', 'aac',                      # Audio codec
-            '-b:a', '128k',                     # Audio bitrate
             '-r', '20',                         # Match stream framerate
             '-s', '1280x720',                   # Fixed resolution
             '-avoid_negative_ts', 'make_zero',  # Fix timestamp issues
@@ -1780,8 +1777,8 @@ def _stop_reliable_recording():
         # Send quit command to FFmpeg for graceful termination
         try:
             if recording_process.stdin and not recording_process.stdin.closed:
-                recording_process.stdin.write(b'q\n')
-                recording_process.stdin.flush()
+        recording_process.stdin.write(b'q\n')
+        recording_process.stdin.flush()
                 recording_process.stdin.close()
                 print("[Reliable Recording] Sent quit command to FFmpeg")
         except Exception as e:
@@ -1815,8 +1812,9 @@ def _stop_reliable_recording():
             if recording_start_time:
                 recording_duration = (datetime.datetime.now() - recording_start_time).total_seconds()
             
-            # Minimum size check (10KB) and reasonable size for duration (at least 1KB per second)
-            min_size = max(10000, int(recording_duration * 1000))  # At least 1KB per second
+            # Simplified validation - just check for reasonable file size
+            # For video-only recording, expect at least 500KB for 30+ seconds
+            min_size = 500000 if recording_duration > 30 else 100000  # 500KB for long recordings, 100KB for short
             file_valid = file_size > min_size
             
             print(f"[Reliable Recording] File validation: {file_size} bytes, {recording_duration:.1f}s, valid: {file_valid}")
@@ -1826,30 +1824,12 @@ def _stop_reliable_recording():
             recording_duration = (datetime.datetime.now() - recording_start_time).total_seconds()
         
         if file_valid:
-            # Try to fix any potential MP4 corruption by re-encoding
-            try:
-                temp_filename = recording_filename.replace('.mp4', '_temp.mp4')
-                fix_cmd = [
-                    'ffmpeg', '-y', '-i', recording_filename,
-                    '-c', 'copy',  # Copy streams without re-encoding
-                    '-movflags', '+faststart',
-                    temp_filename
-                ]
-                fix_result = subprocess.run(fix_cmd, capture_output=True, text=True, timeout=30)
-                if fix_result.returncode == 0 and os.path.exists(temp_filename):
-                    os.replace(temp_filename, recording_filename)
-                    print("[Reliable Recording] MP4 file optimized successfully")
-                elif os.path.exists(temp_filename):
-                    os.remove(temp_filename)
-            except Exception as e:
-                print(f"[Reliable Recording] MP4 optimization failed (non-critical): {e}")
-            
-            result = {
-                'success': True,
+        result = {
+            'success': True,
                 'message': f'Recording stopped successfully. Duration: {recording_duration:.1f}s, Size: {file_size / (1024*1024):.1f}MB',
-                'filename': recording_filename,
-                'duration': recording_duration,
-                'size': file_size
+            'filename': recording_filename,
+            'duration': recording_duration,
+            'size': file_size
             }
         else:
             # File is corrupted or too small, remove it
@@ -1865,7 +1845,7 @@ def _stop_reliable_recording():
                 'filename': None,
                 'duration': recording_duration,
                 'size': 0
-            }
+        }
         
         print(f"[Reliable Recording] ✓ {result['message']}")
         
