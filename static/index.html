@@ -4745,10 +4745,25 @@ async function init() {
   // Document visibility change handling for pause detection
   document.addEventListener('visibilitychange', handleVisibilityChange);
   
-  // SAFETY: Stop motors before page unload (browser close, navigation, refresh)
+  // SAFETY: Stop motors AND stream before page unload (browser close, navigation, refresh)
+  // This saves 4G data by stopping the stream when user closes the page
   window.addEventListener('beforeunload', () => {
     console.log('[Motor Safety] Page unloading - stopping motors');
     emergencyStopMotors('Page closing/navigating');
+    
+    // DATA SAVING: Stop stream to prevent wasting 4G bandwidth
+    console.log('[Stream Safety] Page unloading - stopping stream to save data');
+    if (streamActive) {
+      // Use synchronous XHR for beforeunload (async fetch won't complete)
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/stream/stop', false);  // false = synchronous
+        xhr.send();
+        console.log('[Stream Safety] Stream stop command sent');
+      } catch (e) {
+        console.error('[Stream Safety] Failed to stop stream:', e);
+      }
+    }
   });
   
   // SAFETY: Stop motors when page loses focus

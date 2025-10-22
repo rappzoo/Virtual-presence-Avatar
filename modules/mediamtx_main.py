@@ -1234,7 +1234,7 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle WebSocket disconnection with emergency motor stop"""
+    """Handle WebSocket disconnection with emergency motor stop and stream cleanup"""
     global motor_clients_connected
     print(f"[WebSocket] Client disconnected: {request.sid}")
     
@@ -1249,6 +1249,16 @@ def handle_disconnect():
         print(f"[Motor Safety] ⚠️  Client {request.sid} disconnected - MOTORS STOPPED")
     except Exception as e:
         print(f"[Motor Safety] Error stopping motors on disconnect: {e}")
+    
+    # DATA SAVING: Stop stream when last client disconnects to save bandwidth (4G data)
+    try:
+        if len(motor_clients_connected) == 0:
+            # No more clients - stop the stream to save 4G data
+            print(f"[Stream Safety] 💾 No clients connected - STOPPING STREAM to save bandwidth")
+            stop_streaming()
+            print(f"[Stream Safety] Stream stopped to prevent data waste on 4G connection")
+    except Exception as e:
+        print(f"[Stream Safety] Error stopping stream on disconnect: {e}")
     
     print(f"[Motor Safety] Client {request.sid} removed. Total clients: {len(motor_clients_connected)}")
 
