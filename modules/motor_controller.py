@@ -284,6 +284,19 @@ class MotorController:
         print("[Motor] Sending STOP command")
         return self.send_command("STOP")
     
+    def set_lights(self, position: str, state: bool) -> Dict[str, Any]:
+        """Control front or back lights via SSR
+        
+        Args:
+            position: 'front' or 'back'
+            state: True for ON, False for OFF
+        """
+        position = position.upper()
+        state_str = "ON" if state else "OFF"
+        command = f"LIGHTS {position} {state_str}"
+        print(f"[Motor] Sending lights command: {command}")
+        return self.send_command(command)
+    
     def test_motors(self) -> Dict[str, Any]:
         """Test motor functionality"""
         try:

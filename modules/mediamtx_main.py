@@ -902,6 +902,39 @@ def motor_reconnect():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Motor reconnect error: {e}"})
 
+@app.route('/lights/<position>/<state>', methods=['POST'])
+def lights_control(position, state):
+    """Lights control endpoint for front/back lights via SSR
+    
+    Args:
+        position: 'front' or 'back'
+        state: 'on' or 'off'
+    """
+    try:
+        if not _require_token():
+            return jsonify({"ok": False, "msg": "Unauthorized"}), 401
+        
+        # Validate inputs
+        if position.lower() not in ['front', 'back']:
+            return jsonify({"ok": False, "msg": "Invalid position. Use 'front' or 'back'"}), 400
+        
+        if state.lower() not in ['on', 'off']:
+            return jsonify({"ok": False, "msg": "Invalid state. Use 'on' or 'off'"}), 400
+        
+        # Update heartbeat timestamp for watchdog (lights are part of vehicle control)
+        with motor_watchdog_lock:
+            motor_last_heartbeat = time.time()
+        
+        from modules.motor_controller import motors
+        lights_state = (state.lower() == 'on')
+        result = motors.set_lights(position.lower(), lights_state)
+        
+        print(f"[Lights] {position.capitalize()} lights: {state.upper()}")
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Lights control error: {e}"})
+
 # ============== Sound Effects Routes ==============
 
 @app.route('/play_sound/<int:sound_id>', methods=['POST'])

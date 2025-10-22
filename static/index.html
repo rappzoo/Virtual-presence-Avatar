@@ -909,6 +909,15 @@
 
 
     <div class="group">
+      <h4>Lights Control (SSR)</h4>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button id="frontLightsBtn" class="btn" onclick="toggleLights('front')" style="flex:1;background:rgba(50,50,50,0.5)">🔦 Front Lights</button>
+        <button id="backLightsBtn" class="btn" onclick="toggleLights('back')" style="flex:1;background:rgba(50,50,50,0.5)">💡 Back Lights</button>
+      </div>
+      <div id="lightsStatus" style="font-size:9px;color:#888;margin-top:4px;text-align:center">Lights: OFF | OFF</div>
+    </div>
+
+    <div class="group">
       <h4>Speaker</h4>
       <input id="vol" type="range" class="slider" min="0" max="100" value="70" oninput="setVol(this.value)" />
       <div class="row">
@@ -3886,6 +3895,74 @@ async function rebootSystem() {
     }
   } catch (e) {
     log('Reboot request failed: ' + e.message);
+  }
+}
+
+// Lights control state
+let lightsState = {
+  front: false,
+  back: false
+};
+
+async function toggleLights(position) {
+  /**
+   * Toggle front or back lights via SSR
+   * @param {string} position - 'front' or 'back'
+   */
+  try {
+    const newState = !lightsState[position];
+    const stateStr = newState ? 'on' : 'off';
+    
+    log(`${position.charAt(0).toUpperCase() + position.slice(1)} lights: ${stateStr.toUpperCase()}`);
+    
+    const response = await fetch(`/lights/${position}/${stateStr}`, {
+      method: 'POST'
+    });
+    
+    const result = await response.json();
+    
+    if (result.ok) {
+      // Update local state
+      lightsState[position] = newState;
+      
+      // Update button appearance
+      const btn = sid(`${position}LightsBtn`);
+      if (btn) {
+        if (newState) {
+          btn.style.background = position === 'front' ? 
+            'rgba(255,200,50,0.4)' : 'rgba(255,100,100,0.4)';
+          btn.style.borderColor = position === 'front' ? '#fc3' : '#f66';
+        } else {
+          btn.style.background = 'rgba(50,50,50,0.5)';
+          btn.style.borderColor = '#666';
+        }
+      }
+      
+      // Update status text
+      updateLightsStatus();
+      
+      log(`✓ ${position.charAt(0).toUpperCase() + position.slice(1)} lights ${stateStr}`);
+    } else {
+      log(`✗ Lights control failed: ${result.msg}`);
+    }
+  } catch (e) {
+    log(`✗ Lights control error: ${e.message}`);
+  }
+}
+
+function updateLightsStatus() {
+  /**
+   * Update the lights status display
+   */
+  const statusDiv = sid('lightsStatus');
+  if (statusDiv) {
+    const frontText = lightsState.front ? 
+      '<span style="color:#fc3">FRONT ON</span>' : 
+      '<span style="color:#666">Front Off</span>';
+    const backText = lightsState.back ? 
+      '<span style="color:#f66">BACK ON</span>' : 
+      '<span style="color:#666">Back Off</span>';
+    statusDiv.innerHTML = `Lights: ${frontText} | ${backText}`;
   }
 }
 

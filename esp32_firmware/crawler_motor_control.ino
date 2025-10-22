@@ -32,6 +32,10 @@
 #define LEFT_MOTOR_PIN 18
 #define RIGHT_MOTOR_PIN 19
 
+// Lights control pins (for SSR modules)
+#define FRONT_LIGHTS_PIN 25
+#define BACK_LIGHTS_PIN 26
+
 // ESC calibration values
 #define ESC_MIN_PULSE 1000  // Minimum pulse width (stop)
 #define ESC_MAX_PULSE 2000  // Maximum pulse width (full speed)
@@ -44,6 +48,10 @@ Servo rightESC;
 // Motor speed variables
 int leftSpeed = 0;
 int rightSpeed = 0;
+
+// Lights state variables
+bool frontLightsOn = false;
+bool backLightsOn = false;
 
 // Communication variables
 String inputString = "";
@@ -69,6 +77,12 @@ void setup() {
   // Initialize status LED
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
+  
+  // Initialize lights control pins (for SSR modules)
+  pinMode(FRONT_LIGHTS_PIN, OUTPUT);
+  pinMode(BACK_LIGHTS_PIN, OUTPUT);
+  digitalWrite(FRONT_LIGHTS_PIN, LOW);  // Lights off initially
+  digitalWrite(BACK_LIGHTS_PIN, LOW);   // Lights off initially
   
   // Initialize ESCs
   leftESC.attach(LEFT_MOTOR_PIN, ESC_MIN_PULSE, ESC_MAX_PULSE);
@@ -198,6 +212,47 @@ void processCommand(String command) {
     Serial.println("{\"status\":\"test_start\",\"ok\":true}");
     testSequence();
     Serial.println("{\"status\":\"test_complete\",\"ok\":true}");
+  }
+  // Handle LIGHTS command (format: "LIGHTS FRONT ON" or "LIGHTS BACK OFF")
+  else if (command.startsWith("LIGHTS ")) {
+    int firstSpace = command.indexOf(' ');
+    int secondSpace = command.indexOf(' ', firstSpace + 1);
+    
+    if (firstSpace != -1 && secondSpace != -1) {
+      String lightPos = command.substring(firstSpace + 1, secondSpace);
+      String lightState = command.substring(secondSpace + 1);
+      
+      lightPos.toUpperCase();
+      lightState.toUpperCase();
+      
+      bool newState = (lightState == "ON" || lightState == "1");
+      
+      if (lightPos == "FRONT") {
+        frontLightsOn = newState;
+        digitalWrite(FRONT_LIGHTS_PIN, newState ? HIGH : LOW);
+        
+        Serial.print("{\"ok\":true,\"cmd\":\"LIGHTS\",\"light\":\"front\",\"state\":");
+        Serial.print(frontLightsOn ? "\"on\"" : "\"off\"");
+        Serial.println("}");
+        
+        blinkLED(1, 50);
+      } 
+      else if (lightPos == "BACK") {
+        backLightsOn = newState;
+        digitalWrite(BACK_LIGHTS_PIN, newState ? HIGH : LOW);
+        
+        Serial.print("{\"ok\":true,\"cmd\":\"LIGHTS\",\"light\":\"back\",\"state\":");
+        Serial.print(backLightsOn ? "\"on\"" : "\"off\"");
+        Serial.println("}");
+        
+        blinkLED(1, 50);
+      }
+      else {
+        Serial.println("{\"ok\":false,\"error\":\"invalid_light_position\",\"expected\":\"FRONT or BACK\"}");
+      }
+    } else {
+      Serial.println("{\"ok\":false,\"error\":\"invalid_lights_format\",\"expected\":\"LIGHTS FRONT/BACK ON/OFF\"}");
+    }
   }
   // Handle legacy MOTOR: format for backward compatibility
   else if (command.startsWith("MOTOR:")) {
@@ -353,6 +408,10 @@ void sendStatusReport() {
   Serial.print(leftSpeed);
   Serial.print(",\"right\":");
   Serial.print(rightSpeed);
+  Serial.print(",\"front_lights\":");
+  Serial.print(frontLightsOn ? "\"on\"" : "\"off\"");
+  Serial.print(",\"back_lights\":");
+  Serial.print(backLightsOn ? "\"on\"" : "\"off\"");
   Serial.print(",\"uptime\":");
   Serial.print(systemUptime);
   Serial.print(",\"last_cmd\":");
