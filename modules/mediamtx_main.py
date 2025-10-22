@@ -1129,7 +1129,7 @@ def generate_sound_from_tts():
 
 @app.route('/audio/set_volume', methods=['POST'])
 def set_volume():
-    """Set audio volume endpoint"""
+    """Set audio volume endpoint with smart card/control detection"""
     try:
         if not _require_token():
             return jsonify({"ok": False, "msg": "Unauthorized"}), 401
@@ -1137,29 +1137,62 @@ def set_volume():
         volume = data.get('volume', 70)
         mute = data.get('mute', False)
         
-        print(f"[Audio] Volume: {volume}%, Mute: {mute}")
+        print(f"[Audio] Volume request: {volume}%, Mute: {mute}")
         
-        # Set system volume using amixer
-        try:
-            if mute:
-                cmd = ['amixer', 'set', 'Master', 'mute']
-            else:
-                cmd = ['amixer', 'set', 'Master', f'{volume}%']
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            
-            if result.returncode == 0:
-                return jsonify({"ok": True, "msg": f"Volume set to {volume}%"})
-            else:
-                print(f"[Audio] amixer error: {result.stderr}")
-                return jsonify({"ok": False, "msg": f"Volume error: {result.stderr}"})
+        # Smart volume control: Try different cards and control names
+        # Cards to try (USB audio devices first, then fallback to default)
+        cards_to_try = [
+            ('2', 'PCM'),      # USB Audio card 2 (UACDemoV1.0)
+            ('3', 'PCM'),      # USB Audio card 3 (USB PnP Sound Device)
+            ('0', 'PCM'),      # HDMI 0
+            ('1', 'PCM'),      # HDMI 1
+            (None, 'Master'),  # Default card with Master control
+            (None, 'PCM'),     # Default card with PCM control
+        ]
+        
+        success = False
+        last_error = ""
+        
+        for card, control in cards_to_try:
+            try:
+                # Build amixer command
+                if mute:
+                    if card:
+                        cmd = ['amixer', '-c', card, 'set', control, 'mute']
+                    else:
+                        cmd = ['amixer', 'set', control, 'mute']
+                else:
+                    if card:
+                        cmd = ['amixer', '-c', card, 'set', control, f'{volume}%', 'unmute']
+                    else:
+                        cmd = ['amixer', 'set', control, f'{volume}%', 'unmute']
                 
-        except subprocess.TimeoutExpired:
-            return jsonify({"ok": False, "msg": "Volume timeout"})
-        except FileNotFoundError:
-            return jsonify({"ok": False, "msg": "amixer not available"})
-            
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+                
+                if result.returncode == 0:
+                    card_str = f"card {card}" if card else "default card"
+                    print(f"[Audio] ✓ Volume set to {volume}% on {card_str} using '{control}' control")
+                    success = True
+                    return jsonify({"ok": True, "msg": f"Volume set to {volume}% on {card_str}"})
+                else:
+                    last_error = result.stderr.strip()
+                    
+            except subprocess.TimeoutExpired:
+                last_error = "Timeout"
+                continue
+            except Exception as e:
+                last_error = str(e)
+                continue
+        
+        # If we get here, none of the cards worked
+        if not success:
+            print(f"[Audio] ✗ Failed to set volume on all cards. Last error: {last_error}")
+            return jsonify({"ok": False, "msg": f"Volume control failed. Last error: {last_error}"})
+                
+    except FileNotFoundError:
+        return jsonify({"ok": False, "msg": "amixer not available on system"})
     except Exception as e:
+        print(f"[Audio] Volume error: {e}")
         return jsonify({"ok": False, "msg": f"Volume error: {e}"})
 
 @app.route('/mic_test')
