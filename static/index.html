@@ -1336,6 +1336,9 @@ function initWebSocket() {
   socket.on('disconnect', (reason) => {
     console.log('Socket disconnected:', reason);
     updateMicStatus('WebSocket disconnected');
+    
+    // SAFETY: Stop motors immediately on disconnect (internet loss, etc.)
+    emergencyStopMotors('WebSocket disconnected');
   });
   
   socket.on('connect_error', (error) => {
@@ -2622,14 +2625,21 @@ function go(direction) {
   // Clear any existing interval
   if (moveInterval) clearInterval(moveInterval);
   
-  // Set up periodic movement command to ensure motors keep moving
+  // SAFETY: Send periodic heartbeat commands (watchdog will stop motors if these stop)
+  // Reduced frequency for safety - motors will stop if heartbeat stops
   moveInterval = setInterval(() => {
     if (moving && currentDirection === direction) {
       const speedEl = sid('spd');
       const speed = speedEl ? speedEl.value : 150;
-      mcmd(direction, speed);
+      mcmd(direction, speed);  // This also updates backend heartbeat
+    } else {
+      // If movement stopped, clear the interval
+      if (moveInterval) {
+        clearInterval(moveInterval);
+        moveInterval = null;
+      }
     }
-  }, 200); // Send command every 200ms to maintain movement
+  }, 500); // Send heartbeat every 500ms (backend timeout is 1500ms)
 }
 
 function stopM() {
@@ -2663,6 +2673,39 @@ function estop() {
   }
   
   log('EMERGENCY STOP');
+}
+
+function emergencyStopMotors(reason) {
+  /**
+   * Emergency motor stop - called on critical safety events
+   * - WebSocket disconnect
+   * - Page hidden/minimized
+   * - Browser navigation
+   */
+  console.log(`[Motor Safety] Emergency stop triggered: ${reason}`);
+  
+  moving = false;
+  if (currentDirection) currentDirection = null;
+  
+  // Clear any movement intervals
+  if (moveInterval) {
+    clearInterval(moveInterval);
+    moveInterval = null;
+  }
+  
+  // Clear all key states
+  Object.keys(keyState).forEach(key => keyState[key] = false);
+  
+  // Send stop command (even if offline, try anyway)
+  try {
+    const speedEl = sid('spd');
+    const speed = speedEl ? speedEl.value : 150;
+    mcmd('stop', speed);
+  } catch (e) {
+    console.error('[Motor Safety] Error sending stop command:', e);
+  }
+  
+  log(`⚠️ SAFETY STOP: ${reason}`);
 }
 
 // Motor test function
@@ -4424,10 +4467,13 @@ document.addEventListener('keyup', (e) => {
   }
 });
 
-// Handle page visibility changes (pause/return) for better reliability
+// Handle page visibility changes (pause/return) for better reliability and safety
 function handleVisibilityChange() {
   if (document.hidden) {
     debugLog('Page paused - preparing for potential WebRTC disconnect', 'warning');
+    
+    // SAFETY: Stop motors when page is hidden (tab switch, minimize, etc.)
+    emergencyStopMotors('Page hidden/minimized');
   } else {
     debugLog('Page resumed - checking and reconnecting WebRTC if needed', 'info');
     // Check connection state immediately when returning
@@ -4621,6 +4667,18 @@ async function init() {
   
   // Document visibility change handling for pause detection
   document.addEventListener('visibilitychange', handleVisibilityChange);
+  
+  // SAFETY: Stop motors before page unload (browser close, navigation, refresh)
+  window.addEventListener('beforeunload', () => {
+    console.log('[Motor Safety] Page unloading - stopping motors');
+    emergencyStopMotors('Page closing/navigating');
+  });
+  
+  // SAFETY: Stop motors when page loses focus
+  window.addEventListener('blur', () => {
+    console.log('[Motor Safety] Window lost focus - stopping motors');
+    emergencyStopMotors('Window lost focus');
+  });
   
   // Simple page visibility handling
   window.addEventListener('pageshow', (event) => {

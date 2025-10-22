@@ -92,6 +92,60 @@ recording = False
 stream_operation_lock = threading.Lock()
 print("[MediaMTX Main] Stream operation lock initialized")
 
+# Motor safety watchdog system
+motor_watchdog_active = False
+motor_last_heartbeat = time.time()
+motor_heartbeat_timeout = 1.5  # Stop motors if no heartbeat for 1.5 seconds
+motor_watchdog_lock = threading.Lock()
+motor_clients_connected = set()  # Track connected clients that control motors
+
+def motor_safety_watchdog():
+    """
+    Motor safety watchdog thread.
+    Automatically stops motors if:
+    1. No heartbeat received within timeout period
+    2. All WebSocket clients disconnect
+    3. USB serial link fails (handled in motor_controller.py)
+    """
+    global motor_watchdog_active, motor_last_heartbeat
+    
+    print("[Motor Safety] Watchdog thread started")
+    motor_watchdog_active = True
+    
+    while motor_watchdog_active:
+        try:
+            with motor_watchdog_lock:
+                time_since_heartbeat = time.time() - motor_last_heartbeat
+                clients_count = len(motor_clients_connected)
+                
+                # Stop motors if no heartbeat for too long
+                if time_since_heartbeat > motor_heartbeat_timeout:
+                    # Only log and stop if we think motors might be moving
+                    if time_since_heartbeat < motor_heartbeat_timeout + 2:  # Log once
+                        print(f"[Motor Safety] ⚠️  No heartbeat for {time_since_heartbeat:.1f}s - STOPPING MOTORS")
+                        try:
+                            from modules.motor_controller import motors
+                            motors.stop()
+                        except Exception as e:
+                            print(f"[Motor Safety] Error stopping motors: {e}")
+                
+                # Stop motors if no clients connected
+                if clients_count == 0 and time_since_heartbeat < 5:  # Only if recently had clients
+                    print("[Motor Safety] ⚠️  No clients connected - STOPPING MOTORS")
+                    try:
+                        from modules.motor_controller import motors
+                        motors.stop()
+                    except Exception as e:
+                        print(f"[Motor Safety] Error stopping motors: {e}")
+            
+            time.sleep(0.5)  # Check every 500ms
+            
+        except Exception as e:
+            print(f"[Motor Safety] Watchdog error: {e}")
+            time.sleep(1)
+    
+    print("[Motor Safety] Watchdog thread stopped")
+
 
 # ============== Web Interface ==============
 
@@ -786,10 +840,16 @@ def play_word():
 
 @app.route('/motor/<direction>', methods=['POST'])
 def motor_control(direction):
-    """Motor control endpoint"""
+    """Motor control endpoint with safety heartbeat"""
+    global motor_last_heartbeat
     try:
         if not _require_token():
             return jsonify({"ok": False, "msg": "Unauthorized"}), 401
+        
+        # Update heartbeat timestamp for watchdog
+        with motor_watchdog_lock:
+            motor_last_heartbeat = time.time()
+        
         data = request.get_json() or {}
         speed = int(data.get('speed', 150))
         print(f"[Motor] {direction} at speed {speed}")
@@ -808,6 +868,12 @@ def motor_control(direction):
             return jsonify({"ok": False, "msg": "Unknown direction"}), 400
         return jsonify(result)
     except Exception as e:
+        # On any error, try to stop motors
+        try:
+            from modules.motor_controller import motors
+            motors.stop()
+        except:
+            pass
         return jsonify({"ok": False, "msg": f"Motor error: {e}"})
 
 @app.route('/motor/test', methods=['POST'])
@@ -1121,14 +1187,37 @@ def system_status():
 
 @socketio.on('connect')
 def handle_connect():
-    """Handle WebSocket connection"""
+    """Handle WebSocket connection with motor safety tracking"""
+    global motor_clients_connected, motor_last_heartbeat
     print(f"[WebSocket] Client connected: {request.sid}")
+    
+    # Track client for motor safety
+    with motor_watchdog_lock:
+        motor_clients_connected.add(request.sid)
+        motor_last_heartbeat = time.time()  # Reset heartbeat on new connection
+    
     emit('audio_status', {'status': 'connected'})
+    print(f"[Motor Safety] Client {request.sid} added. Total clients: {len(motor_clients_connected)}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle WebSocket disconnection"""
+    """Handle WebSocket disconnection with emergency motor stop"""
+    global motor_clients_connected
     print(f"[WebSocket] Client disconnected: {request.sid}")
+    
+    # Remove client from tracking
+    with motor_watchdog_lock:
+        motor_clients_connected.discard(request.sid)
+    
+    # SAFETY: Stop motors when client disconnects (internet loss, tab closed, etc.)
+    try:
+        from modules.motor_controller import motors
+        motors.stop()
+        print(f"[Motor Safety] ⚠️  Client {request.sid} disconnected - MOTORS STOPPED")
+    except Exception as e:
+        print(f"[Motor Safety] Error stopping motors on disconnect: {e}")
+    
+    print(f"[Motor Safety] Client {request.sid} removed. Total clients: {len(motor_clients_connected)}")
 
 @socketio.on('start_simple_audio')
 def handle_start_audio():
@@ -2739,5 +2828,10 @@ if __name__ == "__main__":
     # health_thread = threading.Thread(target=stream_health_monitor_thread, daemon=True)
     # health_thread.start()
     print("[Stream Health] Stream health auto-monitoring DISABLED for stability")
+    
+    # Start motor safety watchdog thread
+    motor_watchdog_thread = threading.Thread(target=motor_safety_watchdog, daemon=True)
+    motor_watchdog_thread.start()
+    print("[Motor Safety] Motor safety watchdog started - monitors heartbeat and connections")
     
     main()
