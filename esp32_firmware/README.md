@@ -1,6 +1,22 @@
-# ESP32 Crawler Motor Control Firmware
+# ESP32 Crawler Motor Control Firmware v2.0
 
 This firmware controls two ESCs (Electronic Speed Controllers) for crawler-style movement via USB serial communication with the RPi5.
+
+## 🆕 Version 2.0 Updates
+
+### New Safety Features
+- **2-Second Watchdog Timer** - Auto-stops motors if no command received
+- **JSON Response Format** - Structured error handling and status reporting
+- **Heartbeat System** - Periodic status updates when motors active
+- **Enhanced Stop Commands** - Multiple stop mechanisms with reason logging
+- **Improved Error Messages** - Detailed JSON error responses
+
+### New Command Format
+- **PWM Command** - `PWM left_speed right_speed` (primary format)
+- **Legacy Support** - Old `MOTOR:L:x:R:x` format still works
+- **JSON Responses** - All responses now in JSON format
+
+---
 
 ## Hardware Requirements
 
@@ -21,17 +37,21 @@ This firmware controls two ESCs (Electronic Speed Controllers) for crawler-style
 - Status LED (connected to GPIO 2)
 - Emergency stop button (connected to GPIO 0 with pull-up)
 
+---
+
 ## Wiring Diagram
 
 ```
 ESP32          ESC1 (Left)    ESC2 (Right)
 GPIO 18   -->  Signal Pin
-GPIO 19   -->  Signal Pin
-GND       -->  GND            GND
-5V        -->  VCC            VCC
+GPIO 19   -->                  Signal Pin
+GND       -->  GND             GND
+5V        -->  VCC             VCC
 GPIO 2    -->  LED Anode (+)
 GPIO 0    -->  Emergency Stop Button
 ```
+
+---
 
 ## Installation Instructions
 
@@ -60,6 +80,141 @@ GPIO 0    -->  Emergency Stop Button
 - Click Upload button
 - Wait for upload to complete
 
+---
+
+## Communication Protocol v2.0
+
+### Primary Command Format (NEW)
+```
+PWM left_speed right_speed
+```
+
+**Examples:**
+```
+PWM 100 100      // Both motors forward at speed 100
+PWM -50 50       // Turn left (left reverse, right forward)
+PWM 0 0          // Stop both motors
+PWM 150 130      // Forward with slight right turn
+```
+
+**Response:**
+```json
+{"ok":true,"cmd":"PWM","left":100,"right":100,"uptime":12345}
+```
+
+### Legacy Format (BACKWARD COMPATIBLE)
+```
+MOTOR:L:{left_speed}:R:{right_speed}
+```
+
+**Example:**
+```
+MOTOR:L:150:R:150
+```
+
+**Response:**
+```json
+{"ok":true,"cmd":"MOTOR","left":150,"right":150}
+```
+
+### Control Commands
+
+| Command | Description | Response |
+|---------|-------------|----------|
+| `PWM left right` | Set motor speeds | `{"ok":true,"left":x,"right":x}` |
+| `STOP` | Emergency stop | `{"ok":true,"cmd":"STOP","reason":"command"}` |
+| `STATUS` | Get current status | `{"ok":true,"status":{...}}` |
+| `TEST` | Run test sequence | `{"status":"test_start","ok":true}` |
+
+### Parameters
+- **Speed Range**: -255 to +255
+  - Positive = Forward
+  - Negative = Reverse
+  - 0 = Stop
+- **JSON Format**: All responses in JSON
+
+---
+
+## Safety Features
+
+### 🛡️ Multi-Layer Safety System
+
+#### 1. Watchdog Timer
+- **Timeout**: 2000ms (2 seconds)
+- **Action**: Auto-stop if no command received
+- **Status**: Active when motors running
+- **Response**: `{"emergency":true,"reason":"watchdog_timeout"}`
+
+#### 2. Command Validation
+- Speed range: -255 to +255
+- Invalid commands return error JSON
+- Malformed data rejected with error message
+
+#### 3. Heartbeat System
+- Periodic status updates every 1 second
+- Only when motors are active
+- Format: `{"heartbeat":true,"left":x,"right":x,"uptime":x}`
+
+#### 4. Emergency Stop
+- Multiple ways to trigger stop
+- Reason logging for debugging
+- Immediate motor shutdown
+- LED flash indication
+
+#### 5. Status Reporting
+```json
+{
+  "ok": true,
+  "status": {
+    "left": 0,
+    "right": 0,
+    "uptime": 12345,
+    "last_cmd": 500,
+    "watchdog_timeout": 2000
+  }
+}
+```
+
+---
+
+## Testing
+
+### 1. Serial Monitor Test (v2.0)
+```
+1. Tools → Serial Monitor
+2. Set baud rate to 115200
+3. Send: STATUS
+4. Expect: {"ok":true,"status":{...}}
+```
+
+### 2. Motor Test (PWM Format)
+```
+1. Send: PWM 50 50
+2. Expect: {"ok":true,"cmd":"PWM","left":50,"right":50}
+3. Motors move forward slowly
+4. Send: PWM 0 0
+5. Expect: {"ok":true,"cmd":"PWM","left":0,"right":0}
+6. Motors stop
+```
+
+### 3. Watchdog Test
+```
+1. Send: PWM 100 100
+2. Wait 3 seconds (no commands)
+3. Expect: {"emergency":true,"reason":"watchdog_timeout"}
+4. Motors stop automatically
+```
+
+### 4. Full Test Sequence
+```
+1. Send: TEST
+2. Expect: {"status":"test_start","ok":true}
+3. Watch test sequence run
+4. Expect: {"status":"test_complete","ok":true}
+```
+
+---
+
 ## ESC Calibration
 
 ### Important: Calibrate ESCs Before First Use
@@ -74,9 +229,8 @@ GPIO 0    -->  Emergency Stop Button
 
 ### Manual ESC Calibration (if needed)
 ```cpp
-// Add this to setup() function for manual calibration
 void calibrateESC() {
-  Serial.println("ESC_CALIBRATION_START");
+  Serial.println("{\"status\":\"calibration_start\"}");
   
   // Send maximum signal
   leftESC.writeMicroseconds(2000);
@@ -93,118 +247,114 @@ void calibrateESC() {
   rightESC.writeMicroseconds(1500);
   delay(2000);
   
-  Serial.println("ESC_CALIBRATION_COMPLETE");
+  Serial.println("{\"status\":\"calibration_complete\"}");
 }
 ```
 
-## Communication Protocol
+---
 
-### Command Format
+## Integration with RPi5
+
+### Python Integration (v2.0)
+```python
+import serial
+import json
+import time
+
+class MotorController:
+    def __init__(self, port='/dev/ttyACM0', baud=115200):
+        self.ser = serial.Serial(port, baud, timeout=1)
+        time.sleep(2)  # Wait for ESP32 to initialize
+        
+    def send_pwm(self, left, right):
+        """Send PWM command in new format"""
+        cmd = f"PWM {left} {right}\n"
+        self.ser.write(cmd.encode())
+        
+        # Read JSON response
+        response = self.ser.readline().decode().strip()
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": "invalid_response"}
+    
+    def stop(self):
+        """Emergency stop"""
+        self.ser.write(b"STOP\n")
+        response = self.ser.readline().decode().strip()
+        try:
+            return json.loads(response)
+        except:
+            return {"ok": False}
+    
+    def status(self):
+        """Get current status"""
+        self.ser.write(b"STATUS\n")
+        response = self.ser.readline().decode().strip()
+        try:
+            return json.loads(response)
+        except:
+            return {"ok": False}
+
+# Usage
+motors = MotorController('/dev/ttyACM0')
+
+# Move forward
+result = motors.send_pwm(100, 100)
+print(f"Move result: {result}")
+
+# Get status
+status = motors.status()
+print(f"Status: {status}")
+
+# Stop
+stop = motors.stop()
+print(f"Stop result: {stop}")
 ```
-MOTOR:L:{left_speed}:R:{right_speed}
-```
 
-### Parameters
-- `left_speed`: -255 to +255 (negative = reverse)
-- `right_speed`: -255 to +255 (negative = reverse)
-- `0`: Stop motor
-
-### Example Commands
-```
-MOTOR:L:150:R:150    // Both motors forward at speed 150
-MOTOR:L:-100:R:100   // Turn left (left reverse, right forward)
-MOTOR:L:0:R:0        // Stop both motors
-MOTOR:L:200:R:180    // Forward with slight right turn
-```
-
-### Response Format
-```
-MOTOR_OK:L:{left_speed}:R:{right_speed}
-MOTOR_ERROR:INVALID_SPEED_RANGE
-MOTOR_ERROR:INVALID_FORMAT
-ERROR:UNKNOWN_COMMAND
-```
-
-### Status Commands
-```
-STATUS              // Get current motor speeds
-STOP                // Emergency stop
-TEST                // Run test sequence
-```
-
-## Testing
-
-### 1. Serial Monitor Test
-- Tools → Serial Monitor
-- Set baud rate to 115200
-- Send `STATUS` command
-- Should receive: `STATUS_OK:L:0:R:0`
-
-### 2. Motor Test
-- Send `TEST` command
-- Motors should run test sequence: forward → backward → left → right → stop
-- Watch for any unusual behavior
-
-### 3. Manual Control Test
-- Send `MOTOR:L:100:R:100`
-- Motors should move forward slowly
-- Send `MOTOR:L:0:R:0`
-- Motors should stop
+---
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### Motors Not Moving
-- Check ESC power connections
-- Verify ESC calibration
-- Check motor connections
-- Ensure ESCs are compatible with motors
+#### JSON Parse Errors
+- **Cause**: Multiple messages in buffer
+- **Fix**: Read all available lines until valid JSON
+- **Solution**: Clear input buffer before sending command
 
-#### Erratic Movement
-- Check for loose connections
-- Verify ESC calibration
-- Check power supply stability
-- Reduce speed values
+#### Watchdog Triggering Too Soon
+- **Cause**: Command interval > 2 seconds
+- **Fix**: Send commands every 500ms while moving
+- **Config**: Adjust `WATCHDOG_TIMEOUT` in firmware
 
-#### Communication Errors
-- Check USB cable connection
-- Verify baud rate (115200)
-- Check RPi5 serial port permissions
-- Restart ESP32
+#### Motors Not Responding
+- **Check**: ESC power connections
+- **Check**: ESC calibration
+- **Check**: JSON response for errors
+- **Test**: Send STATUS command
 
-#### ESC Beeping
-- Normal during startup
-- Continuous beeping = calibration issue
-- Intermittent beeping = power issue
+#### Communication Timeout
+- **Check**: USB cable connection
+- **Check**: Baud rate (115200)
+- **Check**: Serial port permissions
+- **Fix**: `sudo chmod 666 /dev/ttyACM0`
 
-### Debug Mode
-Enable debug output by uncommenting debug lines in the firmware:
-```cpp
-#define DEBUG_MODE true
-```
+---
 
-## Safety Features
-
-### Built-in Safety
-- Auto-stop on communication loss (5 seconds)
-- Speed range validation (-255 to +255)
-- Emergency stop function
-- Watchdog timer
-
-### Recommended Safety
-- Always test with low speeds first
-- Keep emergency stop accessible
-- Monitor motor temperature
-- Use appropriate fuses/circuit breakers
-
-## Customization
+## Configuration
 
 ### Pin Configuration
 ```cpp
 #define LEFT_MOTOR_PIN 18    // Change to your preferred pin
 #define RIGHT_MOTOR_PIN 19   // Change to your preferred pin
 #define STATUS_LED_PIN 2     // Change to your preferred pin
+```
+
+### Safety Timing
+```cpp
+const unsigned long WATCHDOG_TIMEOUT = 2000;  // 2 seconds
+const unsigned long HEARTBEAT_INTERVAL = 1000;  // 1 second
 ```
 
 ### ESC Calibration Values
@@ -214,62 +364,47 @@ Enable debug output by uncommenting debug lines in the firmware:
 #define ESC_NEUTRAL 1500     // Adjust for your ESCs
 ```
 
-### Communication Settings
-```cpp
-Serial.begin(115200);       // Change baud rate if needed
-Serial.setTimeout(100);      // Adjust timeout if needed
-```
+---
 
-## Integration with RPi5
+## Safety Recommendations
 
-### Serial Port Setup
-```bash
-# Check available serial ports
-ls /dev/ttyUSB*
+### Testing Safety
+1. ✅ Always test with low speeds first (< 100)
+2. ✅ Keep emergency stop accessible
+3. ✅ Monitor watchdog timeout behavior
+4. ✅ Test communication failure scenarios
 
-# Set permissions (run as root or add user to dialout group)
-sudo chmod 666 /dev/ttyUSB0
+### Operational Safety
+1. ✅ Backend should send commands every 500ms
+2. ✅ Backend timeout should be > 2s (e.g., 3s)
+3. ✅ Monitor heartbeat messages
+4. ✅ Handle JSON errors gracefully
 
-# Add user to dialout group
-sudo usermod -a -G dialout $USER
-```
+### Hardware Safety
+1. ✅ Use appropriate fuses/circuit breakers
+2. ✅ Monitor motor temperature
+3. ✅ Check ESC ratings
+4. ✅ Verify power supply capacity
 
-### Python Test Script
-```python
-import serial
-import time
-
-# Open serial connection
-ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
-
-# Send test command
-ser.write(b'MOTOR:L:100:R:100\n')
-time.sleep(2)
-
-# Stop motors
-ser.write(b'MOTOR:L:0:R:0\n')
-
-# Close connection
-ser.close()
-```
+---
 
 ## Version History
+
+### v2.0.0 (Current)
+- ✅ New PWM command format
+- ✅ JSON response format
+- ✅ 2-second watchdog timer
+- ✅ Heartbeat system
+- ✅ Enhanced error handling
+- ✅ Backward compatibility
 
 ### v1.0.0
 - Initial release
 - Basic motor control
-- USB serial communication
-- ESC calibration support
-- Safety features
+- Legacy MOTOR: format
+- 5-second watchdog
 
-## Support
-
-For issues or questions:
-1. Check troubleshooting section
-2. Verify hardware connections
-3. Test with serial monitor
-4. Check ESC calibration
-5. Review error messages
+---
 
 ## License
 
