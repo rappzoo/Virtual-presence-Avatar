@@ -49,6 +49,27 @@ class PiperTTS:
         onnx = sorted(glob.glob(os.path.join(lang_dir, "*.onnx")))
         return onnx[0] if onnx else None
 
+    def _fix_romanian_question_intonation(self, text):
+        """Fix Romanian question intonation by preprocessing text for Piper"""
+        # Remove the question mark temporarily
+        text_without_q = text.rstrip('?').strip()
+        
+        # Different approaches for different question word patterns
+        question_words = ['ce', 'cum', 'unde', 'când', 'de ce', 'cine', 'care', 'cât', 'câte', 'câți', 'câteva']
+        
+        # Check if text contains common Romanian question words
+        text_lower = text_without_q.lower()
+        has_question_word = any(word in text_lower for word in question_words)
+        
+        if has_question_word:
+            # For questions with question words - add more emphasis and pause
+            enhanced_text = f"{text_without_q}... ?"
+        else:
+            # For other questions - simpler approach
+            enhanced_text = f"{text_without_q} ?"
+        
+        return enhanced_text
+
     def status(self):
         return {
             "ok": bool(self.bin),
@@ -64,6 +85,11 @@ class PiperTTS:
         if language: self.current_language = language
         if self.current_language not in self.languages:
             return {"ok": False, "msg": f"unsupported lang '{self.current_language}'"}
+        
+        # Fix Romanian question intonation
+        is_romanian_question = self.current_language == 'ro' and text.endswith('?')
+        if is_romanian_question:
+            text = self._fix_romanian_question_intonation(text)
 
         lang_dir = self.languages[self.current_language]['dir']
         # 1) Piper CLI?
@@ -73,8 +99,13 @@ class PiperTTS:
                 return {"ok": False, "msg": f"no Piper model/cfg in {lang_dir}"}
             outwav = "/tmp/tts.wav"
             try:
+                # Add length scale for Romanian questions to improve intonation
+                cmd = [self.bin, "--model", model, "--config", cfg, "--output_file", outwav]
+                if is_romanian_question:
+                    cmd.extend(["--length_scale", "0.8"])  # Slower speech for questions
+                
                 p = subprocess.run(
-                    [self.bin, "--model", model, "--config", cfg, "--output_file", outwav],
+                    cmd,
                     input=(text+"\n"), text=True,
                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False
                 )
@@ -96,8 +127,13 @@ class PiperTTS:
                 return {"ok": False, "msg": f"no Piper model in {lang_dir}"}
             outwav = "/tmp/tts.wav"
             try:
+                # Add length scale for Romanian questions to improve intonation
+                cmd = [self.bin, "--model", model, "--output_file", outwav]
+                if is_romanian_question:
+                    cmd.extend(["--length_scale", "0.8"])  # Slower speech for questions
+                
                 p = subprocess.run(
-                    [self.bin, "--model", model, "--output_file", outwav],
+                    cmd,
                     input=(text+"\n"), text=True,
                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False
                 )
