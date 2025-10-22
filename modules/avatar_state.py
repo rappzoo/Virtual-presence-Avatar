@@ -94,6 +94,11 @@ class AvatarStateManager:
         """Get camera settings for all resolutions"""
         return self._state.get("camera_settings", {})
     
+    def set_camera_settings(self, settings: Dict[str, Dict[str, Any]]) -> bool:
+        """Update camera settings for all resolutions"""
+        self._state["camera_settings"] = settings
+        return self._save_state()
+    
     def get_resolution_settings(self, resolution: str) -> Optional[Dict[str, Any]]:
         """Get settings for a specific resolution"""
         return self._state.get("camera_settings", {}).get(resolution)
@@ -164,6 +169,10 @@ def set_last_fps(fps: int) -> bool:
 def get_camera_settings() -> Dict[str, Dict[str, Any]]:
     """Get camera settings for all resolutions"""
     return get_state_manager().get_camera_settings()
+
+def set_camera_settings(settings: Dict[str, Dict[str, Any]]) -> bool:
+    """Update camera settings for all resolutions"""
+    return get_state_manager().set_camera_settings(settings)
 
 def get_resolution_settings(resolution: str) -> Optional[Dict[str, Any]]:
     """Get settings for a specific resolution"""

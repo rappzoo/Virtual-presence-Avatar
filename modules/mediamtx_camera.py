@@ -700,17 +700,18 @@ def load_camera_settings():
 
 def save_camera_settings():
     """Save camera settings to persistent state"""
-    global current_resolution, current_framerate
+    global current_resolution, current_framerate, camera_settings
     
     try:
         # Use the new state manager for persistent settings
-        from modules.avatar_state import set_last_resolution, set_last_fps
+        from modules.avatar_state import set_last_resolution, set_last_fps, set_camera_settings
         
         # Save to persistent state
         set_last_resolution(current_resolution)
         set_last_fps(current_framerate)
+        set_camera_settings(camera_settings)  # Save per-resolution settings too
         
-        print(f"[MediaMTX Camera] Saved persistent settings: {current_resolution}@{current_framerate}fps")
+        print(f"[MediaMTX Camera] Saved persistent settings: {current_resolution}@{current_framerate}fps + per-res settings")
         
     except Exception as e:
         print(f"[MediaMTX Camera] Error saving persistent settings: {e}")
@@ -995,14 +996,21 @@ class MediaMTXCameraManager:
     
     def set_framerate(self, framerate):
         """Change camera framerate with graceful restart"""
-        global current_framerate
+        global current_framerate, camera_settings
         
         print(f"[MediaMTX Camera] Changing framerate from {current_framerate} to {framerate}")
         
         old_framerate = current_framerate
         current_framerate = framerate
         
-        # Save settings immediately
+        # IMPORTANT: Update FPS for ALL resolutions so they stay in sync
+        # This fixes the issue where status bar shows 10 fps but button shows 20 fps
+        for res_key in camera_settings:
+            camera_settings[res_key]['fps'] = framerate
+        
+        print(f"[MediaMTX Camera] Updated all resolution FPS settings to {framerate}")
+        
+        # Save settings immediately (this saves both current_framerate and camera_settings)
         save_camera_settings()
         print(f"[MediaMTX Camera] Global framerate updated to {current_framerate}")
         
@@ -1015,8 +1023,10 @@ class MediaMTXCameraManager:
                 stop_result = stop_streaming()
                 if not stop_result.get('ok'):
                     print(f"[MediaMTX Camera] Failed to stop stream for framerate change: {stop_result}")
-                    # Revert framerate on failure
+                    # Revert framerate on failure (both global and per-resolution)
                     current_framerate = old_framerate
+                    for res_key in camera_settings:
+                        camera_settings[res_key]['fps'] = old_framerate
                     save_camera_settings()
                     return False
                 
@@ -1030,15 +1040,19 @@ class MediaMTXCameraManager:
                     return True
                 else:
                     print(f"[MediaMTX Camera] Failed to restart stream: {start_result}")
-                    # Revert framerate on failure
+                    # Revert framerate on failure (both global and per-resolution)
                     current_framerate = old_framerate
+                    for res_key in camera_settings:
+                        camera_settings[res_key]['fps'] = old_framerate
                     save_camera_settings()
                     return False
                     
             except Exception as e:
                 print(f"[MediaMTX Camera] Error during framerate change: {e}")
-                # Revert framerate on error
+                # Revert framerate on error (both global and per-resolution)
                 current_framerate = old_framerate
+                for res_key in camera_settings:
+                    camera_settings[res_key]['fps'] = old_framerate
                 save_camera_settings()
                 return False
         else:
