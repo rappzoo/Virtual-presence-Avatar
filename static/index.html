@@ -3187,17 +3187,34 @@ async function setRes(resolution) {
       // Preserve the configured FPS during resolution changes
       debugLog(`Resolution change preserving FPS: ${configuredFPS}`, 'info');
       
-      // Use MediaMTX Control API to update stream configuration without restart
-      try {
-        await updateStreamConfiguration('resolution', resolution);
-        log('Stream configuration updated dynamically');
-      } catch (configError) {
-        log('Dynamic config update failed, falling back to restart: ' + configError.message);
-        // Fallback to restart if Control API fails
-        await stopStream();
-        setTimeout(async () => {
-          await startStream();
-        }, 3000);
+      // IMPORTANT: Reconnect WebRTC player to pick up new resolution
+      // The backend already restarted FFmpeg with new resolution
+      // But the WebRTC player needs to reconnect to see it
+      if (streamActive && webrtcPlayer) {
+        log('🔄 Reconnecting player to apply new resolution...');
+        try {
+          // Destroy existing WebRTC connection
+          webrtcPlayer.destroy();
+          webrtcPlayer = null;
+          vuMeterInitializedForCurrentConnection = false;
+          
+          // Wait for stream to stabilize with new resolution
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Reconnect WebRTC player
+          await updateStreamPlayer();
+          log('✓ Player reconnected with ' + resolution);
+        } catch (reconnectError) {
+          log('⚠️ Player reconnect error: ' + reconnectError.message);
+          // Fallback: Full stop/start cycle
+          log('Falling back to full stream restart...');
+          await stopStream();
+          setTimeout(async () => {
+            await startStream();
+          }, 3000);
+        }
+      } else {
+        log('ℹ️ Stream not active - resolution will apply on next start');
       }
     } else {
       log('Resolution change failed: ' + result.message);
