@@ -1,6 +1,6 @@
 # 🤖 Avatar Tank - Remote Presence Robot
 
-A comprehensive remote presence robot system with live video streaming, audio communication, motor control, and text-to-speech capabilities. Built for Raspberry Pi with professional-grade streaming and control interfaces.
+A comprehensive remote presence robot system with live video streaming, audio communication, motor control, and text-to-speech capabilities. Built for Raspberry Pi with professional-grade streaming and control interfaces powered by MediaMTX and Flask.
 
 ![Avatar Tank](https://img.shields.io/badge/Status-Production%20Ready-green)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue)
@@ -9,203 +9,443 @@ A comprehensive remote presence robot system with live video streaming, audio co
 ## 🌟 Features
 
 ### 🎥 **Live Video Streaming**
-- **WebRTC & HLS Support** - Low-latency streaming with fallback options
+- **WebRTC & HLS Support** - Low-latency streaming with automatic fallback
 - **Dynamic Resolution** - 320p, 480p, 720p with real-time switching
-- **Audio + Video** - Synchronized audio and video streaming
-- **Snapshot Capture** - High-quality still images at selected resolution
+- **Synchronized Audio + Video** - Crystal-clear audio with video
+- **Recording & Snapshots** - Capture video recordings and still images
+- **VU Meter** - Real-time audio level visualization
+- **Adaptive Quality** - Automatic quality adjustment based on network
 
 ### 🎮 **Motor Control**
-- **Serial Communication** - Direct motor controller interface
+- **ESP32/Serial Communication** - Direct motor controller interface
 - **Movement Commands** - Forward, backward, left, right, stop
 - **Real-time Control** - Responsive movement with status feedback
+- **Reconnection Support** - Automatic motor controller reconnection
 
 ### 🔊 **Audio System**
-- **Text-to-Speech** - Multi-language TTS with voice synthesis
-- **Audio Streaming** - Live microphone input with VU meter
-- **Sound Effects** - System sounds and audio feedback
-- **Volume Control** - Adjustable audio levels
+- **Multi-language TTS** - English, Romanian, German with Piper engine
+- **Live Audio Streaming** - Real-time microphone input with WebRTC
+- **Sound Effects** - 20 customizable sound effect slots
+- **TTS-to-Sound Generator** - Create custom sound effects from text
+- **Volume Control** - Adjustable audio levels and mute
+
+### 🎵 **Sound Effects Management**
+- **20 Sound Slots** - Store and play custom sound effects
+- **TTS Sound Generation** - Convert any text to a sound effect
+- **Sound Renaming** - Customize sound button labels
+- **Multi-language Support** - Generate sounds in EN, RO, or DE
 
 ### 🌐 **Web Interface**
-- **Modern UI** - Responsive design with real-time updates
-- **WebSocket Communication** - Live status and control updates
-- **Mobile Friendly** - Works on phones, tablets, and desktops
+- **Modern Responsive UI** - Works on phones, tablets, and desktops
+- **WebSocket Communication** - Real-time status and control updates
 - **System Diagnostics** - Comprehensive health monitoring
+- **Persistent Settings** - Remembers your preferences
 
 ### ⚙️ **System Management**
+- **Auto-Start on Boot** - Systemd service automatically starts
 - **Persistent State** - Remembers settings across restarts
 - **Auto-Recovery** - Automatic stream and connection recovery
-- **Process Monitoring** - Health checks and automatic restarts
-- **Log Management** - Clean logging with automatic cleanup
+- **Process Monitoring** - Health checks with graceful error handling
+- **Remote Reboot** - Safely reboot the system from web interface
 
 ## 🚀 Quick Start
 
 ### 1. **Prerequisites**
-See [PREREQUISITES.md](PREREQUISITES.md) for detailed setup requirements.
+```bash
+# Required Hardware
+- Raspberry Pi 4/5 (2GB+ RAM recommended)
+- USB Camera (e.g., C270, C922)
+- USB Microphone
+- USB Speaker
+- Motor controller (ESP32/Arduino on serial port)
+
+# Required Software
+- Raspberry Pi OS (64-bit recommended)
+- Python 3.11+
+- FFmpeg
+- MediaMTX
+- Piper TTS
+```
 
 ### 2. **Installation**
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/avatar-tank.git
-cd avatar-tank
+cd /home/havatar
+git clone <your-repo-url> Avatar-robot
+cd Avatar-robot
 
-# Install dependencies
+# Install system dependencies
 sudo apt update
-sudo apt install -y python3-pip python3-venv ffmpeg v4l-utils alsa-utils
+sudo apt install -y python3-pip python3-venv ffmpeg v4l-utils alsa-utils \
+  libopus-dev python3-eventlet mpg123
 
 # Install Python packages
 pip3 install -r requirements.txt
 
+# Install MediaMTX (if not already installed)
+# Download from https://github.com/bluenviron/mediamtx
+sudo cp mediamtx /usr/local/bin/
+sudo chmod +x /usr/local/bin/mediamtx
+
+# Install Piper TTS
+# Follow instructions in piper/README.md
+
 # Make scripts executable
-chmod +x *.sh
+chmod +x start_avatar_simple.sh
+chmod +x piper/bin/piper
 ```
 
 ### 3. **Hardware Setup**
-- Connect USB camera to `/dev/video0`
-- Connect USB microphone to system
-- Connect motor controller to `/dev/ttyACM0`
-- Ensure network connectivity
-
-### 4. **Configuration**
 ```bash
-# Edit configuration files
-nano config/mediamtx.yml
-nano config/avatar_state.json
+# Camera
+- Connect USB camera → detected as /dev/video0
+- Verify: ls -l /dev/video*
+
+# Audio
+- Connect USB microphone → typically plughw:3,0
+- Connect USB speaker → typically plughw:2,0
+- Verify: arecord -L && aplay -L
+
+# Motor Controller
+- Connect ESP32/Arduino → /dev/ttyACM0 or /dev/ttyUSB0
+- Verify: ls -l /dev/tty*
 ```
 
-### 5. **Start the System**
+### 4. **Configure Service**
 ```bash
-# Start all services
-./start_final_stable.sh
+# Copy service file to systemd
+sudo cp avatar-tank.service /etc/systemd/system/
 
-# Or start manually
-python3 modules/mediamtx_main.py
+# Reload systemd and enable service
+sudo systemctl daemon-reload
+sudo systemctl enable avatar-tank.service
+sudo systemctl start avatar-tank.service
+
+# Check status
+systemctl status avatar-tank.service
 ```
 
-### 6. **Access the Interface**
-- **Web Interface**: http://your-ip:5000
-- **Video Stream**: http://your-ip:8888/stream/
-- **WebRTC Stream**: http://your-ip:8889/stream
+### 5. **Access the Interface**
+```bash
+# Find your Raspberry Pi's IP address
+hostname -I
+
+# Access web interface
+http://YOUR_IP:5000
+
+# Streaming endpoints
+- WebRTC: http://YOUR_IP:8889/stream
+- HLS: http://YOUR_IP:8888/stream/
+- RTSP: rtsp://YOUR_IP:8554/stream
+```
 
 ## 📁 Project Structure
 
 ```
-avatar-tank/
-├── README.md                 # This file
-├── PREREQUISITES.md          # Setup requirements
-├── requirements.txt          # Python dependencies
-├── config/                   # Configuration files
-│   ├── mediamtx.yml         # MediaMTX server config
-│   └── avatar_state.json    # Persistent state
-├── modules/                  # Core system modules
-│   ├── mediamtx_main.py     # Main Flask application
-│   ├── mediamtx_camera.py   # Camera and streaming
-│   ├── mediamtx_audio.py    # Audio management
-│   ├── mediamtx_recorder.py # Recording functionality
-│   ├── avatar_state.py      # State management
-│   ├── device_detector.py   # Hardware detection
-│   ├── motor.py             # Motor control
-│   ├── tts.py               # Text-to-speech
-│   └── predictor.py         # TTS prediction
-├── static/                   # Web interface files
-│   ├── index.html           # Main web interface
-│   ├── css/                 # Stylesheets
-│   ├── js/                  # JavaScript files
-│   └── sounds/              # Audio files
-├── piper/                    # TTS engine
-│   ├── models/              # Voice models
-│   └── bin/                 # TTS binaries
-├── snapshots/               # Captured images
-├── recordings/              # Video recordings
-├── sounds/                  # System sounds
-└── scripts/                 # Utility scripts
-    ├── start_final_stable.sh
-    ├── cleanup_logs.sh
-    └── check_disk_usage.sh
+Avatar-robot/
+├── README.md                    # This file
+├── PREREQUISITES.md             # Detailed setup requirements
+├── CHANGELOG.md                 # Version history
+├── LICENSE                      # MIT License
+├── requirements.txt             # Python dependencies
+│
+├── avatar-tank.service          # Systemd service (active)
+├── start_avatar_simple.sh       # Startup script (active)
+│
+├── config/                      # Configuration files
+│   ├── mediamtx.yml            # MediaMTX streaming config
+│   └── avatar_state.json       # Persistent system state
+│
+├── modules/                     # Core Python modules
+│   ├── mediamtx_main.py        # Main Flask application (2700+ lines)
+│   ├── mediamtx_camera.py      # Camera & streaming control
+│   ├── mediamtx_audio.py       # Audio management
+│   ├── mediamtx_recorder.py    # Video recording
+│   ├── device_detector.py      # Hardware auto-detection
+│   ├── motor_controller.py     # Motor control interface
+│   ├── tts.py                  # Text-to-speech (Piper)
+│   ├── predictor.py            # Word prediction for TTS
+│   ├── avatar_state.py         # State persistence
+│   ├── audio_utils.py          # Audio utilities
+│   └── esp32_communicator.py   # ESP32 communication
+│
+├── static/                      # Web interface
+│   └── index.html              # Single-page application (4700+ lines)
+│
+├── piper/                       # TTS engine
+│   ├── bin/piper               # Piper TTS binary
+│   ├── models/                 # Voice models (EN, RO, DE)
+│   └── words.txt              # Dictionary
+│
+├── sounds/                      # Sound effects (20 slots)
+│   ├── sound1.mp3 ... sound20.mp3
+│
+├── snapshots/                   # Captured images
+├── recordings/                  # Video recordings
+├── dicts/                       # Word dictionaries
+├── esp32_firmware/              # Motor controller firmware
+│
+└── archive/                     # Archived/unused files
+    ├── old_scripts/            # Previous startup scripts
+    ├── old_services/           # Old service configurations
+    ├── old_logs/               # Archived log files
+    └── old_docs/               # Previous documentation
 ```
 
 ## 🎛️ API Endpoints
 
 ### **System Control**
-- `GET /api/status` - System status and health
-- `GET /api/state` - Complete system state
-- `POST /api/state/reset` - Reset system state
+- `GET /api/status` - System status (streaming, camera, audio, recording)
+- `GET /api/system_status` - Complete system state with motor info
+- `POST /system/reboot` - Safely reboot the Raspberry Pi
 
-### **Streaming**
-- `POST /api/stream/start` - Start video stream
-- `POST /api/stream/stop` - Stop video stream
-- `POST /api/stream/refresh` - Refresh stream
-- `POST /api/snapshot` - Capture snapshot
+### **Streaming Control**
+- `POST /api/stream/start` - Start video/audio stream
+- `POST /api/stream/stop` - Stop stream
+- `POST /api/stream/refresh` - Refresh stream (full restart)
+- `GET /api/stream/status` - Stream status
 
 ### **Camera Control**
-- `POST /api/resolution` - Change resolution
-- `POST /api/framerate` - Change framerate
-- `GET /api/camera/status` - Camera status
+- `POST /api/camera/resolution` - Change resolution (320p/480p/720p)
+- `POST /api/camera/framerate` - Change FPS (10-25)
+- `POST /api/snapshot` - Capture high-quality snapshot
+- `GET /api/camera/status` - Camera device status
+
+### **Recording**
+- `POST /api/recording/start` - Start video recording
+- `POST /api/recording/stop` - Stop recording
+- `GET /api/recording/status` - Recording status
 
 ### **Motor Control**
 - `POST /api/motor/forward` - Move forward
 - `POST /api/motor/backward` - Move backward
 - `POST /api/motor/left` - Turn left
 - `POST /api/motor/right` - Turn right
-- `POST /api/motor/stop` - Stop movement
+- `POST /api/motor/stop` - Emergency stop
+- `POST /api/motor/reconnect` - Reconnect motor controller
+- `GET /api/motor/status` - Motor controller status
 
-### **Audio Control**
-- `POST /api/tts/speak` - Text-to-speech
-- `POST /api/audio/volume` - Set volume
-- `POST /api/audio/mute` - Toggle mute
+### **Audio & TTS**
+- `POST /speak` - Text-to-speech (multi-language)
+- `POST /set_language` - Change TTS language (en/ro/de)
+- `POST /audio/set_volume` - Set volume level
+- `POST /audio/test_mic` - Test microphone recording
+
+### **Sound Effects**
+- `POST /play_sound/<id>` - Play sound effect (0-19)
+- `POST /generate_sound_from_tts` - Generate sound from TTS text
+  - Parameters: `text`, `language`, `sound_id` (0-19)
 
 ## 🔧 Configuration
 
-### **MediaMTX Configuration**
-Edit `config/mediamtx.yml` to customize streaming settings:
+### **MediaMTX Settings** (`config/mediamtx.yml`)
 ```yaml
+# Core streaming settings
+logLevel: info
+logDestinations: [file]
+logFile: mediamtx.log
+
+# Protocol settings
 rtmpDisable: yes
 hlsDisable: no
 webrtcDisable: no
+hlsVariant: mpegts
+
+# Performance
+readTimeout: 10s
+writeTimeout: 10s
 ```
 
-### **System State**
-The system automatically saves state in `config/avatar_state.json`:
-```json
-{
-  "last_resolution": "720p",
-  "last_fps": 15,
-  "camera_settings": {
-    "320p": {"width": 640, "height": 360, "fps": 10},
-    "480p": {"width": 854, "height": 480, "fps": 10},
-    "720p": {"width": 1280, "height": 720, "fps": 10}
-  }
-}
-```
+### **System State** (`config/avatar_state.json`)
+Automatically managed - stores:
+- Last used resolution and FPS
+- Camera settings for each resolution
+- Persistent preferences
 
-## 🛠️ Maintenance
+### **Systemd Service** (`avatar-tank.service`)
+- **Type**: Simple (Flask runs as main process)
+- **Restart**: Always (5 second delay)
+- **Auto-start**: Enabled (starts on boot)
+- **User**: havatar
+- **Logs**: journalctl -u avatar-tank.service
 
-### **Log Management**
+## 🛠️ Operation
+
+### **Starting the System**
 ```bash
-# Clean up old log files
-./cleanup_logs.sh
+# Automatic (on boot)
+# Service starts automatically - no action needed
 
-# Check disk usage
-./check_disk_usage.sh
+# Manual start
+sudo systemctl start avatar-tank.service
+
+# Check status
+systemctl status avatar-tank.service
+
+# View logs
+journalctl -u avatar-tank.service -f
 ```
 
-### **System Monitoring**
-- **Process Status**: Check running processes
-- **Stream Health**: Monitor WebRTC/HLS connections
-- **Hardware Status**: Camera, microphone, motor controller
-- **Network Status**: Latency and connectivity
+### **Stopping the System**
+```bash
+# Stop service
+sudo systemctl stop avatar-tank.service
 
-### **Troubleshooting**
-- **Stream Issues**: Check FFmpeg and MediaMTX logs
-- **Audio Problems**: Verify ALSA device configuration
-- **Motor Control**: Check serial port permissions
-- **Web Interface**: Check Flask application logs
+# Disable auto-start
+sudo systemctl disable avatar-tank.service
+```
 
-## 🔒 Security Considerations
+### **Restarting**
+```bash
+# Via command line
+sudo systemctl restart avatar-tank.service
 
-- **Network Access**: Configure firewall rules
-- **Authentication**: Add user authentication if needed
-- **HTTPS**: Use SSL/TLS for production deployment
-- **Access Control**: Restrict network access to trusted devices
+# Via web interface
+# Click the "Reboot" button in System section
+# System will safely reboot and auto-restart
+```
+
+## 🔍 Monitoring & Diagnostics
+
+### **Web Interface Diagnostics**
+The web interface includes comprehensive diagnostics:
+- System status display
+- Real-time bandwidth monitoring
+- Audio VU meter
+- Stream health indicators
+- Network latency display
+- Hardware detection status
+
+### **Log Files**
+```bash
+# Service logs (systemd journal)
+journalctl -u avatar-tank.service --since today
+
+# MediaMTX logs
+tail -f /home/havatar/Avatar-robot/mediamtx.log
+
+# Check process status
+ps aux | grep -E "mediamtx|python3.*mediamtx_main"
+
+# Check port usage
+netstat -tlnp | grep -E "5000|8554|8888|8889"
+```
+
+### **Hardware Verification**
+```bash
+# Camera
+v4l2-ctl --list-devices
+ffmpeg -f v4l2 -list_formats all -i /dev/video0
+
+# Audio
+arecord -l  # List microphones
+aplay -l    # List speakers
+speaker-test -t wav -c 2  # Test speakers
+
+# Serial ports (motor controller)
+ls -l /dev/tty*
+```
+
+## 🚨 Troubleshooting
+
+### **Service Won't Start**
+```bash
+# Check service status
+systemctl status avatar-tank.service
+
+# View detailed logs
+journalctl -u avatar-tank.service -n 50
+
+# Verify script is executable
+ls -l /home/havatar/Avatar-robot/start_avatar_simple.sh
+
+# Test MediaMTX manually
+/usr/local/bin/mediamtx /home/havatar/Avatar-robot/config/mediamtx.yml
+```
+
+### **Stream Not Working**
+```bash
+# Check if FFmpeg is running
+ps aux | grep ffmpeg
+
+# Check MediaMTX
+curl http://localhost:9997/v3/paths/list
+
+# Verify camera
+ls -l /dev/video0
+v4l2-ctl --list-formats-ext -d /dev/video0
+
+# Test stream manually
+ffmpeg -f v4l2 -i /dev/video0 -f alsa -i plughw:3,0 -t 5 test.mp4
+```
+
+### **Audio Issues**
+```bash
+# Check microphone
+arecord -D plughw:3,0 -f cd -d 5 test.wav
+aplay test.wav
+
+# Check speaker
+speaker-test -D plughw:2,0
+
+# Verify TTS
+ls -l /home/havatar/Avatar-robot/piper/bin/piper
+echo "test" | /home/havatar/Avatar-robot/piper/bin/piper --model <model>
+```
+
+### **Motor Control Not Responding**
+```bash
+# Check serial port
+ls -l /dev/ttyACM0 /dev/ttyUSB0
+
+# Check permissions
+sudo usermod -a -G dialout havatar
+
+# Test serial communication
+screen /dev/ttyACM0 115200
+```
+
+## 🔒 Security
+
+### **Network Security**
+```bash
+# Restrict access (example)
+sudo ufw allow from 192.168.1.0/24 to any port 5000
+sudo ufw allow from 192.168.1.0/24 to any port 8888
+sudo ufw allow from 192.168.1.0/24 to any port 8889
+sudo ufw enable
+```
+
+### **Sudo Permissions**
+The system requires these sudo permissions (configured):
+```bash
+# /etc/sudoers.d/avatar-reboot
+havatar ALL=(ALL) NOPASSWD: /sbin/reboot, /usr/sbin/reboot
+```
+
+## 📊 Performance
+
+### **Typical Resource Usage**
+- **CPU**: 20-40% (depending on resolution/FPS)
+- **Memory**: ~300MB (Flask + MediaMTX + FFmpeg)
+- **Network**: 500KB/s - 2MB/s (depending on quality)
+- **Storage**: ~100MB base + recordings/snapshots
+
+### **Optimization Tips**
+- Use 320p or 480p for better performance
+- Lower FPS (10-15) for bandwidth savings
+- Enable bandwidth management in web interface
+- Regularly clean up old recordings/snapshots
+
+## 🆕 Recent Features (2025)
+
+- ✅ **TTS-to-Sound Generator** - Convert text to custom sound effects
+- ✅ **Remote Reboot** - Safe system reboot from web interface
+- ✅ **Auto-start on Boot** - Systemd integration with automatic startup
+- ✅ **Socket.IO Improvements** - Better connection stability
+- ✅ **UI Cleanup** - Removed unused battery monitor and debug panels
+- ✅ **Process Cleanup Fix** - Eliminated self-killing service issues
+- ✅ **Stream Lock Mechanism** - Prevents concurrent stream operations
 
 ## 🤝 Contributing
 
@@ -221,18 +461,19 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **MediaMTX** - Professional streaming server
-- **FFmpeg** - Video and audio processing
-- **Piper TTS** - Text-to-speech engine
-- **Flask** - Web framework
-- **WebRTC** - Real-time communication
+- **MediaMTX** - Professional RTSP/HLS/WebRTC streaming server
+- **FFmpeg** - Powerful video and audio processing
+- **Piper TTS** - High-quality text-to-speech engine
+- **Flask** - Lightweight web framework
+- **Flask-SocketIO** - Real-time bidirectional communication
+- **Eventlet** - Concurrent networking library
 
-## 📞 Support
+## 📞 Support & Contact
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/avatar-tank/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/avatar-tank/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/avatar-tank/wiki)
+For issues, questions, or contributions, please use the GitHub repository's issue tracker.
 
 ---
 
-**Built with ❤️ for the robotics community**
+**Built with ❤️ for remote presence and telepresence applications**
+
+**Status**: Production Ready | **Last Updated**: October 2025

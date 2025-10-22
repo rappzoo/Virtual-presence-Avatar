@@ -34,8 +34,6 @@ class MotorController:
         self.ser: Optional[serial.Serial] = None
         self.port = port
         self.lock = threading.Lock()
-        self.battery_voltage = 12.0
-        self.battery_percentage = 75
         self.connection_attempts = 0
         self.max_connection_attempts = 3
         self.last_command_time = 0
@@ -165,23 +163,6 @@ class MotorController:
             # Check if we got a valid response
             if response.strip():
                 print(f"[Motor] Communication test successful: {response.strip()[:50]}...")
-                
-                # Try to parse battery info if available
-                try:
-                    for line in response.split('\n'):
-                        line = line.strip()
-                        if line.startswith('{') and line.endswith('}'):
-                            data = json.loads(line)
-                            print(f"[Motor] Received JSON data: {data}")
-                            if 'voltage' in data:
-                                self.battery_voltage = float(data['voltage'])
-                                self._update_battery_percentage()
-                                print(f"[Motor] Battery voltage: {self.battery_voltage}V, {self.battery_percentage}%")
-                            break
-                except Exception as e:
-                    print(f"[Motor] Error parsing battery info: {e}")
-                    pass  # Not critical if battery parsing fails
-                
                 return True
             else:
                 print(f"[Motor] No response to STATUS command")
@@ -190,13 +171,6 @@ class MotorController:
         except Exception as e:
             print(f"[Motor] Communication test failed: {e}")
             return False
-    
-    def _update_battery_percentage(self):
-        """Update battery percentage based on voltage"""
-        # Simple linear mapping: 10V = 0%, 12.6V = 100%
-        voltage_range = 12.6 - 10.0
-        voltage_offset = self.battery_voltage - 10.0
-        self.battery_percentage = max(0, min(100, int((voltage_offset / voltage_range) * 100)))
     
     def send_command(self, cmd: str) -> Dict[str, Any]:
         """Send command to motor controller with enhanced error handling"""
@@ -246,12 +220,6 @@ class MotorController:
                             try:
                                 json_response = json.loads(line)
                                 print(f"[Motor] Parsed JSON response: {json_response}")
-                                
-                                # Update battery info if present
-                                if 'voltage' in json_response:
-                                    self.battery_voltage = float(json_response['voltage'])
-                                    self._update_battery_percentage()
-                                
                                 return json_response
                             except json.JSONDecodeError as e:
                                 print(f"[Motor] JSON decode error: {e}")
@@ -344,27 +312,6 @@ class MotorController:
         except Exception as e:
             return {"ok": False, "msg": str(e)}
     
-    def get_battery(self) -> Dict[str, Any]:
-        """Get battery status"""
-        # If not connected, return last known values
-        if not self.connected:
-            return {
-                "voltage": self.battery_voltage,
-                "percentage": self.battery_percentage,
-                "connected": False,
-                "error": self.last_error
-            }
-        
-        # Try to get fresh battery data
-        response = self.send_command("STATUS")
-        
-        return {
-            "voltage": self.battery_voltage,
-            "percentage": self.battery_percentage,
-            "connected": self.connected,
-            "last_response": response.get("ok", False)
-        }
-    
     def get_status(self) -> Dict[str, Any]:
         """Get comprehensive motor controller status"""
         # If not connected, try to reconnect
@@ -378,8 +325,6 @@ class MotorController:
             "connected": self.connected,
             "ok": self.connected,  # For backward compatibility
             "port": self.port,
-            "battery_voltage": self.battery_voltage,
-            "battery_percentage": self.battery_percentage,
             "connection_attempts": self.connection_attempts,
             "last_error": self.last_error,
             "last_command_time": self.last_command_time

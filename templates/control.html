@@ -148,7 +148,7 @@
             <div class="control-group">
                 <label>HLS Stream:</label>
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="text" id="hls-url" value="http://192.168.68.107:8888/stream/index.m3u8" readonly style="flex: 1; padding: 5px;">
+                    <input type="text" id="hls-url" value="" readonly style="flex: 1; padding: 5px;">
                     <button onclick="copyToClipboard('hls-url')">Copy</button>
                 </div>
             </div>
@@ -162,7 +162,7 @@
             <div class="control-group">
                 <label>WebRTC Stream:</label>
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="text" id="webrtc-url" value="http://192.168.68.107:8889/stream" readonly style="flex: 1; padding: 5px;">
+                    <input type="text" id="webrtc-url" value="" readonly style="flex: 1; padding: 5px;">
                     <button onclick="copyToClipboard('webrtc-url')">Copy</button>
                 </div>
             </div>
@@ -440,7 +440,8 @@
 
         function updateStreamPlayer() {
             const video = document.getElementById('stream-player');
-            const hlsUrl = 'http://192.168.68.107:8888/stream/index.m3u8';
+            const host = window.location.hostname;
+            const hlsUrl = `http://${host}:8888/stream/index.m3u8`;
             
             if (Hls.isSupported()) {
                 // Use HLS.js for better browser compatibility
@@ -493,6 +494,17 @@
         }
 
         // Auto-refresh status every 5 seconds
+        function setDynamicUrls() {
+            const host = window.location.hostname;
+            const hls = document.getElementById('hls-url');
+            const rtsp = document.getElementById('rtsp-url');
+            const webrtc = document.getElementById('webrtc-url');
+            if (hls) hls.value = `http://${host}:8888/stream/index.m3u8`;
+            if (rtsp) rtsp.value = `rtsp://${host}:8554/stream`;
+            if (webrtc) webrtc.value = `http://${host}:8889/stream`;
+        }
+
+        setDynamicUrls();
         setInterval(loadStatus, 5000);
     </script>
 </body>

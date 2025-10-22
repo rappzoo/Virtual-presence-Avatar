@@ -148,3 +148,10 @@ cython_debug/
 local_config.py
 dev_settings.py
 debug.log
+
+# Archive directory (old/unused files)
+archive/old_logs/
+archive/old_docs/
+archive/old_scripts/
+archive/old_services/
+

@@ -1,0 +1,129 @@
+ESP32 Crawler Motor Control - Wiring Diagram
+=============================================
+
+ESP32 DevKit V1 Pinout:
+=======================
+
+                    USB
+                     |
+    [3V3] [EN] [VP] [GPIO36] [GPIO39] [GPIO34] [GPIO35] [GPIO32] [GPIO33] [GPIO25] [GPIO26] [GPIO27] [GPIO14] [GPIO12] [GND]
+    [5V]  [GND][VIN][GPIO22] [GPIO21] [GPIO19] [GPIO18] [GPIO5]  [GPIO17] [GPIO16] [GPIO4]  [GPIO0]  [GPIO2]  [GPIO15] [GND]
+                     |
+                   [GPIO23] [GPIO1] [GPIO3] [RX] [TX] [GND] [5V]
+
+Connections:
+============
+
+ESP32          ESC1 (Left Motor)    ESC2 (Right Motor)    Power Supply
+GPIO 18   -->  Signal (White)       -                     -
+GPIO 19   -->  -                    Signal (White)        -
+GND       -->  GND (Black)          GND (Black)           GND
+5V        -->  VCC (Red)            VCC (Red)             5V+
+GPIO 2    -->  LED Anode (+)        -                     -
+GPIO 0    -->  Emergency Stop       -                     -
+
+ESC Connections:
+================
+
+ESC1 (Left Motor):
+- Red wire   -> 5V+ (Power)
+- Black wire -> GND (Ground)
+- White wire -> GPIO 18 (Signal)
+
+ESC2 (Right Motor):
+- Red wire   -> 5V+ (Power)
+- Black wire -> GND (Ground)
+- White wire -> GPIO 19 (Signal)
+
+Motor Connections:
+==================
+
+Left Motor:
+- Motor + -> ESC1 Motor +
+- Motor - -> ESC1 Motor -
+
+Right Motor:
+- Motor + -> ESC2 Motor +
+- Motor - -> ESC2 Motor -
+
+Power Supply:
+=============
+
+ESP32 Power:
+- 5V pin -> 5V+ (from power supply)
+- GND pin -> GND (from power supply)
+
+ESC Power:
+- ESC1 VCC -> 5V+ (from power supply)
+- ESC1 GND -> GND (from power supply)
+- ESC2 VCC -> 5V+ (from power supply)
+- ESC2 GND -> GND (from power supply)
+
+Optional Components:
+===================
+
+Status LED:
+- Anode (+) -> GPIO 2
+- Cathode (-) -> GND
+- Resistor: 220Ω (between GPIO 2 and LED anode)
+
+Emergency Stop Button:
+- One terminal -> GPIO 0
+- Other terminal -> GND
+- Internal pull-up resistor enabled in firmware
+
+Power Requirements:
+===================
+
+ESP32:
+- Voltage: 5V
+- Current: ~500mA (without WiFi)
+- Current: ~1A (with WiFi)
+
+ESCs:
+- Voltage: Depends on motor requirements (typically 6V-12V)
+- Current: Depends on motor specifications
+- Check ESC and motor datasheets for exact requirements
+
+Motors:
+- Voltage: Depends on motor specifications
+- Current: Depends on motor specifications
+- Check motor datasheets for exact requirements
+
+Safety Notes:
+=============
+
+1. Always disconnect power before making connections
+2. Double-check all connections before powering on
+3. Start with low speeds for testing
+4. Ensure proper ESC calibration
+5. Use appropriate fuses/circuit breakers
+6. Monitor motor temperature during operation
+7. Keep emergency stop accessible
+8. Test with motors unloaded first
+
+Troubleshooting:
+===============
+
+No Movement:
+- Check power connections
+- Verify ESC calibration
+- Check motor connections
+- Ensure firmware is uploaded correctly
+
+Erratic Movement:
+- Check for loose connections
+- Verify ESC calibration
+- Check power supply stability
+- Reduce speed values
+
+Communication Issues:
+- Check USB cable connection
+- Verify serial port permissions
+- Check baud rate settings
+- Restart ESP32
+
+ESC Beeping:
+- Normal during startup
+- Continuous beeping = calibration issue
+- Intermittent beeping = power issue

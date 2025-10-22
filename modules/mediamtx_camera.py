@@ -343,23 +343,25 @@ def cleanup_zombie_processes():
         # subprocess.run(['pkill', '-f', 'ffmpeg.*rtsp://localhost:8554/stream'], 
         #               capture_output=True, timeout=5)
         
-        # Kill any existing Python processes (except current one)
-        current_pid = os.getpid()
-        result = subprocess.run(['pgrep', '-f', 'python.*mediamtx_main'], 
-                              capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            for pid_line in result.stdout.strip().split('\n'):
-                if pid_line.strip():
-                    pid = int(pid_line.strip())
-                    if pid != current_pid:
-                        try:
-                            os.kill(pid, 9)
-                            print(f"[Process Cleanup] Killed conflicting Python process: {pid}")
-                        except ProcessLookupError:
-                            pass  # Process already dead
+        # DISABLED: Killing other Python processes causes systemd service to kill itself
+        # during rapid restarts. Systemd already handles process cleanup with KillMode=mixed.
+        # # Kill any existing Python processes (except current one)
+        # current_pid = os.getpid()
+        # result = subprocess.run(['pgrep', '-f', 'python.*mediamtx_main'], 
+        #                       capture_output=True, text=True, timeout=5)
+        # if result.returncode == 0:
+        #     for pid_line in result.stdout.strip().split('\n'):
+        #         if pid_line.strip():
+        #             pid = int(pid_line.strip())
+        #             if pid != current_pid:
+        #                 try:
+        #                     os.kill(pid, 9)
+        #                     print(f"[Process Cleanup] Killed conflicting Python process: {pid}")
+        #                 except ProcessLookupError:
+        #                     pass  # Process already dead
         
-        # Wait for processes to terminate
-        time.sleep(2)
+        # DISABLED: No longer needed since we don't kill processes
+        # time.sleep(2)
         
         # Check for zombie processes
         result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=5)
@@ -1683,8 +1685,8 @@ def get_ffmpeg_command():
         # Video encoding with optimized settings
         '-vf', f'fps={current_framerate},scale={width}:{height}:flags=lanczos,format=yuv420p',
     ] + video_params + [
-        '-g', '30',  # Larger GOP for better compression
-        '-keyint_min', '15',
+        '-g', str(current_framerate),  # Align GOP with FPS for low latency keyframes
+        '-keyint_min', str(max(1, int(current_framerate/2))),
         '-sc_threshold', '40',
         '-b:v', video_bitrate,
         '-maxrate', video_bitrate,
@@ -1692,7 +1694,9 @@ def get_ffmpeg_command():
         
         # Audio encoding - Simple Opus configuration
         '-c:a', 'libopus',
-        '-b:a', '32k',
+        '-b:a', '24k',
+        '-ar', '16000',
+        '-ac', '1',
         
         # Network optimization for low latency
         '-fflags', '+nobuffer',

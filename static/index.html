@@ -710,11 +710,13 @@
 <body>
 <div class="container">
   <div class="panel tts">
-    <div id="recent" class="pills" style="display:none;">
-      <div class="pill" onclick="pickRecentPhrase(0)" id="recent1"></div>
-      <div class="pill" onclick="pickRecentPhrase(1)" id="recent2"></div>
+    <div id="recent" class="pills" style="display:none;"></div>
+    <div id="predictions" class="pills" style="display:none;">
+      <div class="pill" onclick="selectPrediction(0)" id="pred0"></div>
+      <div class="pill" onclick="selectPrediction(1)" id="pred1"></div>
+      <div class="pill" onclick="selectPrediction(2)" id="pred2"></div>
+      <div class="pill" onclick="selectPrediction(3)" id="pred3"></div>
     </div>
-    <div id="predictions" class="pills" style="display:none;"></div>
     <div id="diacritics" class="pills" style="display:none;">
       <div class="pill diacritic-pill" onclick="insertDiacritic('ă')">ă</div>
       <div class="pill diacritic-pill" onclick="insertDiacritic('â')">â</div>
@@ -791,6 +793,45 @@
       <button class="sbtn" onclick="beep(18)" data-sound-id="18" data-sound-name="Sound 19">19</button>
       <button class="sbtn" onclick="beep(19)" data-sound-id="19" data-sound-name="Sound 20">20</button>
     </div>
+    
+    <!-- TTS to Sound Generator -->
+    <div style="margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid #444;">
+      <div style="font-size: 10px; color: #cc3300; margin-bottom: 6px; font-weight: bold;">💬 Generate Sound from TTS</div>
+      <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+        <input 
+          id="tts-sound-text" 
+          type="text" 
+          placeholder="Enter text (e.g., 'hello, how's it going?')" 
+          style="flex: 1; padding: 6px; font-size: 10px; background: rgba(0,0,0,0.3); border: 1px solid #555; border-radius: 4px; color: #fff;"
+        />
+      </div>
+      <div style="display: flex; gap: 4px; align-items: center;">
+        <select id="tts-sound-slot" style="flex: 1; padding: 6px; font-size: 10px; background: rgba(0,0,0,0.3); border: 1px solid #555; border-radius: 4px; color: #fff;">
+          <option value="0">Save to Slot 1</option>
+          <option value="1">Save to Slot 2</option>
+          <option value="2">Save to Slot 3</option>
+          <option value="3">Save to Slot 4</option>
+          <option value="4">Save to Slot 5</option>
+          <option value="5">Save to Slot 6</option>
+          <option value="6">Save to Slot 7</option>
+          <option value="7">Save to Slot 8</option>
+          <option value="8">Save to Slot 9</option>
+          <option value="9">Save to Slot 10</option>
+          <option value="10">Save to Slot 11</option>
+          <option value="11">Save to Slot 12</option>
+          <option value="12">Save to Slot 13</option>
+          <option value="13">Save to Slot 14</option>
+          <option value="14">Save to Slot 15</option>
+          <option value="15">Save to Slot 16</option>
+          <option value="16">Save to Slot 17</option>
+          <option value="17">Save to Slot 18</option>
+          <option value="18">Save to Slot 19</option>
+          <option value="19">Save to Slot 20</option>
+        </select>
+        <button class="btn" onclick="generateTTSSound()" style="flex: 0 0 auto; font-size: 10px; padding: 6px 12px;">Generate & Save</button>
+      </div>
+      <div id="tts-sound-status" style="font-size: 9px; color: #aaa; margin-top: 4px; min-height: 14px;"></div>
+    </div>
   </div>
 
   <div class="panel video">
@@ -816,11 +857,6 @@
         <span id="fps">10</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Battery:</span>
-        <span id="battery-display">--%</span>
-        <span id="voltage-display" style="margin-left:5px">(--V)</span>
-      </div>
-      <div class="info-item">
         <span class="info-label">Bandwidth:</span>
         <span id="bwtext">0 KB/s</span>
       </div>
@@ -839,6 +875,7 @@
         </div>
       </div>
     </div>
+    <div id="log" class="panel log" style="margin-top:8px;max-height:80px;overflow-y:auto;font-size:10px">Avatar Tank System Ready</div>
     <div style="margin-top:8px">
       <button class="btn" onclick="refreshStream()" style="padding:2px 6px;font-size:10px;">Refresh</button>
       <span id="uptime" style="margin-left:15px;font-size:10px;opacity:0.8">Uptime: 00:00:00</span>
@@ -872,14 +909,6 @@
 
 
     <div class="group">
-      <h4>Smart Debug</h4>
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
-        <button class="btn" onclick="runSystemDiagnostics()" style="flex:1;font-size:10px;padding:4px">Diagnose</button>
-      </div>
-      <div id="debug-output" style="font-size:9px;color:#cccccc;margin-top:8px;max-height:100px;overflow-y:auto;background:rgba(0,0,0,0.3);padding:4px;border-radius:4px;border:1px solid #444;"></div>
-    </div>
-
-    <div class="group">
       <h4>Speaker</h4>
       <input id="vol" type="range" class="slider" min="0" max="100" value="70" oninput="setVol(this.value)" />
       <div class="row">
@@ -891,20 +920,280 @@
   </div>
 
 
-  <div id="log" class="panel log">Avatar Tank System Ready</div>
 </div>
 
 <script>
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+  loadWordDatabases();
+  initializeWordDatabases();
+});
 // Global variables
 let lang = 'en';
 let predictionTimeout = null;
 let recentPhrases = [];
+let wordDatabase = {
+  'en': new Map(),
+  'ro': new Map(), 
+  'de': new Map()
+};
+let contextDatabase = {
+  'en': new Map(),
+  'ro': new Map(),
+  'de': new Map()
+};
 
 // Enhanced prediction system
 let wordContext = [];
 let sentenceHistory = [];
 let wordFrequency = {};
 let contextPatterns = {};
+
+// Common word pairs in different languages
+let commonPairs = {
+  'en': {
+    'hello': ['how', 'there', 'everyone', 'world'],
+    'good': ['morning', 'evening', 'night', 'day', 'luck', 'job'],
+    'how': ['are', 'do', 'much', 'many', 'long', 'far'],
+    'what': ['is', 'are', 'do', 'time', 'name', 'color'],
+    'where': ['is', 'are', 'do', 'can', 'will'],
+    'when': ['is', 'are', 'do', 'can', 'will'],
+    'why': ['is', 'are', 'do', 'can', 'will'],
+    'i': ['am', 'have', 'want', 'need', 'like', 'love'],
+    'you': ['are', 'have', 'want', 'need', 'like', 'love'],
+    'we': ['are', 'have', 'want', 'need', 'like', 'love'],
+    'they': ['are', 'have', 'want', 'need', 'like', 'love'],
+    'this': ['is', 'are', 'has', 'will', 'can'],
+    'that': ['is', 'are', 'has', 'will', 'can'],
+    'here': ['is', 'are', 'we', 'you', 'i'],
+    'there': ['is', 'are', 'we', 'you', 'i'],
+    'now': ['i', 'we', 'you', 'they', 'is'],
+    'then': ['i', 'we', 'you', 'they', 'was'],
+    'today': ['is', 'i', 'we', 'you', 'they'],
+    'tomorrow': ['will', 'i', 'we', 'you', 'they'],
+    'yesterday': ['was', 'i', 'we', 'you', 'they']
+  },
+  'ro': {
+    'salut': ['cum', 'ce', 'unde', 'când'],
+    'bună': ['dimineața', 'seara', 'ziua', 'noaptea'],
+    'cum': ['ești', 'te', 'sunt', 'este'],
+    'ce': ['faci', 'e', 'sunt', 'vrei'],
+    'unde': ['ești', 'sunt', 'e', 'te'],
+    'când': ['ești', 'sunt', 'e', 'te'],
+    'de': ['ce', 'unde', 'când', 'cum'],
+    'eu': ['sunt', 'am', 'vreau', 'am', 'nevoie'],
+    'tu': ['ești', 'ai', 'vrei', 'ai', 'nevoie'],
+    'noi': ['suntem', 'avem', 'vrem', 'avem', 'nevoie'],
+    'ei': ['sunt', 'au', 'vor', 'au', 'nevoie'],
+    'acest': ['este', 'are', 'va', 'poate'],
+    'acel': ['este', 'are', 'va', 'poate'],
+    'aici': ['sunt', 'suntem', 'ești', 'sunt'],
+    'acolo': ['sunt', 'suntem', 'ești', 'sunt'],
+    'acum': ['eu', 'noi', 'tu', 'ei'],
+    'atunci': ['eu', 'noi', 'tu', 'ei'],
+    'astăzi': ['sunt', 'suntem', 'ești', 'sunt'],
+    'mâine': ['voi', 'vom', 'vei', 'vor'],
+    'ieri': ['am', 'am', 'ai', 'au']
+  },
+  'de': {
+    'hallo': ['wie', 'was', 'wo', 'wann'],
+    'guten': ['morgen', 'abend', 'tag', 'nacht'],
+    'wie': ['geht', 'ist', 'sind', 'heißt'],
+    'was': ['ist', 'sind', 'machst', 'willst'],
+    'wo': ['ist', 'sind', 'bist', 'sind'],
+    'wann': ['ist', 'sind', 'bist', 'sind'],
+    'warum': ['ist', 'sind', 'bist', 'sind'],
+    'ich': ['bin', 'habe', 'will', 'möchte'],
+    'du': ['bist', 'hast', 'willst', 'möchtest'],
+    'wir': ['sind', 'haben', 'wollen', 'möchten'],
+    'sie': ['sind', 'haben', 'wollen', 'möchten'],
+    'das': ['ist', 'sind', 'hat', 'wird'],
+    'dies': ['ist', 'sind', 'hat', 'wird'],
+    'hier': ['ist', 'sind', 'bin', 'sind'],
+    'dort': ['ist', 'sind', 'bin', 'sind'],
+    'jetzt': ['bin', 'sind', 'bist', 'sind'],
+    'dann': ['bin', 'sind', 'bist', 'sind'],
+    'heute': ['ist', 'bin', 'sind', 'bist'],
+    'morgen': ['werde', 'werden', 'wirst', 'werden'],
+    'gestern': ['war', 'waren', 'warst', 'waren']
+  }
+};
+
+// Load word databases from localStorage
+function loadWordDatabases() {
+  try {
+    const saved = localStorage.getItem('avatarWordDatabase');
+    if (saved) {
+      const data = JSON.parse(saved);
+      Object.keys(data).forEach(lang => {
+        if (wordDatabase[lang]) {
+          Object.entries(data[lang]).forEach(([word, count]) => {
+            wordDatabase[lang].set(word, count);
+          });
+        }
+      });
+    }
+    
+    const savedContext = localStorage.getItem('avatarContextDatabase');
+    if (savedContext) {
+      const data = JSON.parse(savedContext);
+      Object.keys(data).forEach(lang => {
+        if (contextDatabase[lang]) {
+          Object.entries(data[lang]).forEach(([context, count]) => {
+            contextDatabase[lang].set(context, count);
+          });
+        }
+      });
+    }
+  } catch (e) {
+    console.log('Error loading word databases:', e);
+  }
+}
+
+// Save word databases to localStorage
+function saveWordDatabases() {
+  try {
+    const toSave = {};
+    Object.keys(wordDatabase).forEach(lang => {
+      toSave[lang] = Object.fromEntries(wordDatabase[lang]);
+    });
+    localStorage.setItem('avatarWordDatabase', JSON.stringify(toSave));
+    
+    const toSaveContext = {};
+    Object.keys(contextDatabase).forEach(lang => {
+      toSaveContext[lang] = Object.fromEntries(contextDatabase[lang]);
+    });
+    localStorage.setItem('avatarContextDatabase', JSON.stringify(toSaveContext));
+  } catch (e) {
+    console.log('Error saving word databases:', e);
+  }
+}
+
+// Learn words from spoken text
+function learnFromSpokenText(text, language) {
+  const words = text.toLowerCase().split(/\s+/).filter(word => word.length > 1);
+  
+  // Learn individual words
+  words.forEach(word => {
+    const current = wordDatabase[language].get(word) || 0;
+    wordDatabase[language].set(word, current + 1);
+  });
+  
+  // Learn word pairs (context)
+  for (let i = 0; i < words.length - 1; i++) {
+    const context = words[i] + ' ' + words[i + 1];
+    const current = contextDatabase[language].get(context) || 0;
+    contextDatabase[language].set(context, current + 1);
+  }
+  
+  saveWordDatabases();
+}
+
+// Get word suggestions based on current input
+function getWordSuggestions(partialWord, language, previousWord = '') {
+  const suggestions = [];
+  const partial = partialWord.toLowerCase();
+  
+  // Get all words that start with the partial input
+  const candidates = [];
+  wordDatabase[language].forEach((count, word) => {
+    if (word.startsWith(partial) && word !== partial) {
+      candidates.push({ word, count });
+    }
+  });
+  
+  // Sort by frequency and take top 4
+  candidates.sort((a, b) => b.count - a.count);
+  const topWords = candidates.slice(0, 4).map(c => c.word);
+  
+  // If we have a previous word, boost context-based suggestions
+  if (previousWord && contextDatabase[language].size > 0) {
+    const contextCandidates = [];
+    contextDatabase[language].forEach((count, context) => {
+      if (context.startsWith(previousWord.toLowerCase() + ' ')) {
+        const nextWord = context.split(' ')[1];
+        if (nextWord.startsWith(partial) && nextWord !== partial) {
+          contextCandidates.push({ word: nextWord, count });
+        }
+      }
+    });
+    
+    contextCandidates.sort((a, b) => b.count - a.count);
+    const contextWords = contextCandidates.slice(0, 2).map(c => c.word);
+    
+    // Merge and deduplicate
+    const merged = [...new Set([...contextWords, ...topWords])];
+    return merged.slice(0, 4);
+  }
+  
+  return topWords;
+}
+
+// Select a prediction pill
+function selectPrediction(index) {
+  const input = sid('tts');
+  if (!input) return;
+  
+  const pill = sid(`pred${index}`);
+  if (!pill || !pill.textContent) return;
+  
+  const text = input.value;
+  const cursorPos = input.selectionStart;
+  
+  // Find the current word being typed
+  const beforeCursor = text.substring(0, cursorPos);
+  const afterCursor = text.substring(cursorPos);
+  
+  // Find word boundaries
+  const beforeMatch = beforeCursor.match(/(\S*)$/);
+  const afterMatch = afterCursor.match(/^(\S*)/);
+  
+  const beforeWord = beforeMatch ? beforeMatch[1] : '';
+  const afterWord = afterMatch ? afterMatch[1] : '';
+  
+  // Replace the current word with the selected prediction
+  const newText = beforeCursor.substring(0, beforeCursor.length - beforeWord.length) + 
+                  pill.textContent + ' ' + 
+                  afterCursor.substring(afterWord.length);
+  
+  input.value = newText;
+  
+  // Position cursor after the completed word and space
+  const newCursorPos = beforeCursor.length - beforeWord.length + pill.textContent.length + 1;
+  input.setSelectionRange(newCursorPos, newCursorPos);
+  input.focus();
+  
+  // Generate new predictions for the next word
+  setTimeout(() => {
+    predictText(input.value);
+  }, 10);
+}
+
+// Update prediction pills
+function updatePredictionPills(suggestions) {
+  const predictionsEl = sid('predictions');
+  if (!predictionsEl) return;
+  
+  if (suggestions.length === 0) {
+    predictionsEl.style.display = 'none';
+    return;
+  }
+  
+  // Update pill content
+  for (let i = 0; i < 4; i++) {
+    const pill = sid(`pred${i}`);
+    if (pill) {
+      if (i < suggestions.length) {
+        pill.textContent = suggestions[i];
+        pill.style.display = 'block';
+      } else {
+        pill.style.display = 'none';
+      }
+    }
+  }
+  
+  predictionsEl.style.display = 'flex';
+}
 let commonWords = {
   'en': [
     'hello', 'hi', 'good', 'morning', 'afternoon', 'evening', 'night', 'day', 'time', 'today',
@@ -1033,13 +1322,29 @@ function initWebSocket() {
   socket = io({
     timeout: 10000,
     reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000
+    reconnectionAttempts: 3,
+    reconnectionDelay: 2000,
+    reconnectionDelayMax: 5000,
+    transports: ['websocket', 'polling']
   });
   
   socket.on('connect', () => {
     console.log('Socket connected:', socket.id);
     updateMicStatus('WebSocket ready');
+  });
+  
+  socket.on('disconnect', (reason) => {
+    console.log('Socket disconnected:', reason);
+    updateMicStatus('WebSocket disconnected');
+  });
+  
+  socket.on('connect_error', (error) => {
+    // Silently handle connection errors - normal when service restarts
+    console.log('Socket connection error (normal during restart)');
+  });
+  
+  socket.on('error', (error) => {
+    console.log('Socket error:', error.message || 'Unknown error');
   });
   
   socket.on('audio_status', (data) => {
@@ -1885,67 +2190,6 @@ function getCommonNextWords(lastWord) {
   const suggestions = new Set();
   const currentLang = lang;
   
-  // Common word pairs in different languages
-  const commonPairs = {
-    'en': {
-      'hello': ['how', 'there', 'everyone', 'world'],
-      'good': ['morning', 'evening', 'night', 'day', 'luck', 'job'],
-      'how': ['are', 'do', 'much', 'many', 'long', 'far'],
-      'what': ['is', 'are', 'do', 'time', 'about', 'happened'],
-      'where': ['are', 'is', 'do', 'can', 'did'],
-      'when': ['is', 'are', 'do', 'can', 'will'],
-      'why': ['do', 'are', 'is', 'not', 'so'],
-      'i': ['am', 'want', 'need', 'like', 'think', 'know', 'have', 'will', 'can'],
-      'you': ['are', 'can', 'will', 'should', 'have', 'want', 'need'],
-      'we': ['are', 'can', 'will', 'should', 'have', 'need', 'want'],
-      'they': ['are', 'can', 'will', 'have', 'want', 'need'],
-      'the': ['car', 'house', 'book', 'computer', 'phone', 'time', 'day', 'way'],
-      'a': ['car', 'house', 'book', 'computer', 'phone', 'good', 'bad', 'big', 'small'],
-      'to': ['go', 'see', 'do', 'be', 'have', 'get', 'make', 'take', 'give'],
-      'and': ['the', 'i', 'you', 'we', 'they', 'then', 'so'],
-      'but': ['i', 'you', 'we', 'they', 'the', 'it', 'not'],
-      'or': ['not', 'maybe', 'perhaps', 'the', 'a'],
-      'so': ['i', 'you', 'we', 'they', 'the', 'much', 'many'],
-      'very': ['good', 'bad', 'nice', 'big', 'small', 'fast', 'slow'],
-      'really': ['good', 'bad', 'nice', 'big', 'small', 'fast', 'slow'],
-      'quite': ['good', 'bad', 'nice', 'big', 'small', 'fast', 'slow']
-    },
-    'ro': {
-      'salut': ['cum', 'ce', 'unde', 'când'],
-      'bună': ['ziua', 'dimineața', 'seara', 'noaptea'],
-      'cum': ['ești', 'este', 'sunt', 'mergi', 'te simți'],
-      'ce': ['faci', 'este', 'sunt', 'vrei', 'ai'],
-      'unde': ['ești', 'este', 'mergi', 'te duci'],
-      'când': ['vine', 'pleci', 'ești', 'poți'],
-      'eu': ['sunt', 'am', 'vreau', 'pot', 'trebuie'],
-      'tu': ['ești', 'ai', 'vrei', 'poți', 'trebuie'],
-      'noi': ['suntem', 'avem', 'vrem', 'putem', 'trebuie'],
-      'ei': ['sunt', 'au', 'vor', 'pot', 'trebuie'],
-      'și': ['eu', 'tu', 'noi', 'ei', 'apoi', 'deci'],
-      'dar': ['eu', 'tu', 'noi', 'ei', 'nu', 'totuși'],
-      'sau': ['nu', 'poate', 'probabil', 'eu', 'tu'],
-      'foarte': ['bun', 'rău', 'frumos', 'mare', 'mic'],
-      'chiar': ['bun', 'rău', 'frumos', 'mare', 'mic']
-    },
-    'de': {
-      'hallo': ['wie', 'was', 'wo', 'wann'],
-      'guten': ['morgen', 'tag', 'abend', 'nacht'],
-      'wie': ['geht', 'ist', 'sind', 'heißt'],
-      'was': ['ist', 'sind', 'machst', 'willst'],
-      'wo': ['ist', 'sind', 'gehst', 'wohnst'],
-      'wann': ['kommst', 'gehst', 'ist', 'kannst'],
-      'ich': ['bin', 'habe', 'will', 'kann', 'muss'],
-      'du': ['bist', 'hast', 'willst', 'kannst', 'musst'],
-      'wir': ['sind', 'haben', 'wollen', 'können', 'müssen'],
-      'sie': ['sind', 'haben', 'wollen', 'können', 'müssen'],
-      'und': ['ich', 'du', 'wir', 'sie', 'dann', 'so'],
-      'aber': ['ich', 'du', 'wir', 'sie', 'nicht', 'trotzdem'],
-      'oder': ['nicht', 'vielleicht', 'möglicherweise'],
-      'sehr': ['gut', 'schlecht', 'schön', 'groß', 'klein'],
-      'wirklich': ['gut', 'schlecht', 'schön', 'groß', 'klein']
-    }
-  };
-  
   if (commonPairs[currentLang] && commonPairs[currentLang][lastWord.toLowerCase()]) {
     commonPairs[currentLang][lastWord.toLowerCase()].forEach(word => {
       suggestions.add(word);
@@ -1955,29 +2199,34 @@ function getCommonNextWords(lastWord) {
   return Array.from(suggestions);
 }
 
-// Function to handle recent phrase selection
-function pickRecentPhrase(index) {
-  if (recentPhrases[index]) {
-    const input = sid('tts');
-    if (input) {
-      // Replace current text with the recent phrase
-      input.value = recentPhrases[index];
-      input.focus();
-      
-      // Hide predictions
-      const predictions = sid('predictions');
-      if (predictions) predictions.style.display = 'none';
-      
-      // Learn the phrase
-      learnWordsFromText(recentPhrases[index]);
-      
-      // Auto-predict next word after the phrase
-      setTimeout(() => {
-        updateWordContext(input.value);
-        predictNextWord();
-      }, 100);
+// Initialize word databases with common words
+function initializeWordDatabases() {
+  // Add common words to each language database
+  Object.keys(commonWords).forEach(lang => {
+    if (wordDatabase[lang]) {
+      commonWords[lang].forEach(word => {
+        if (!wordDatabase[lang].has(word)) {
+          wordDatabase[lang].set(word, 1);
+        }
+      });
     }
-  }
+  });
+  
+  // Add common word pairs to context database
+  Object.keys(commonPairs).forEach(lang => {
+    if (contextDatabase[lang]) {
+      Object.entries(commonPairs[lang]).forEach(([firstWord, secondWords]) => {
+        secondWords.forEach(secondWord => {
+          const context = firstWord + ' ' + secondWord;
+          if (!contextDatabase[lang].has(context)) {
+            contextDatabase[lang].set(context, 1);
+          }
+        });
+      });
+    }
+  });
+  
+  saveWordDatabases();
 }
 
 // Enhanced context-aware prediction system
@@ -2040,83 +2289,46 @@ function getContextualSuggestions(currentWord, context) {
 
 async function predictText(query) {
   clearTimeout(predictionTimeout);
-  const predictions = sid('predictions');
   
   if (!query || query.length < 1) {
-    if (predictions) predictions.style.display = 'none';
+    updatePredictionPills([]);
     return;
   }
   
-  predictionTimeout = setTimeout(async () => {
+  predictionTimeout = setTimeout(() => {
     try {
-      const currentLang = lang;
       const input = sid('tts');
-      const fullText = input ? input.value : '';
+      if (!input) return;
       
-      // Update context from current text
-      updateWordContext(fullText);
+      const fullText = input.value;
+      const cursorPos = input.selectionStart;
       
-      // Get contextual suggestions
-      const contextualSuggestions = getContextualSuggestions(query, wordContext);
+      // Find the current word being typed
+      const beforeCursor = fullText.substring(0, cursorPos);
+      const afterCursor = fullText.substring(cursorPos);
       
-      // Get server-based predictions
-      let serverSuggestions = [];
-      try {
-      const response = await fetch('/predict?q=' + encodeURIComponent(query) + '&limit=5&lang=' + currentLang);
-      const data = await response.json();
-        if (data.ok && data.items) {
-          serverSuggestions = data.items;
-        }
-      } catch (e) {
-        console.log('Server prediction error:', e);
-      }
+      // Find word boundaries
+      const beforeMatch = beforeCursor.match(/(\S*)$/);
+      const afterMatch = afterCursor.match(/^(\S*)/);
       
-      // Combine and deduplicate suggestions
-      const allSuggestions = [...new Set([...serverSuggestions, ...contextualSuggestions])];
+      const currentWord = beforeMatch ? beforeMatch[1] : '';
+      const afterWord = afterMatch ? afterMatch[1] : '';
       
-      if (allSuggestions.length > 0 && predictions) {
-        predictions.innerHTML = '';
-        
-        // Sort by relevance (server suggestions first, then by frequency)
-        const sortedSuggestions = allSuggestions.sort((a, b) => {
-          const aIsServer = serverSuggestions.includes(a);
-          const bIsServer = serverSuggestions.includes(b);
-          if (aIsServer && !bIsServer) return -1;
-          if (!aIsServer && bIsServer) return 1;
-          
-          const aFreq = wordFrequency[a] || 0;
-          const bFreq = wordFrequency[b] || 0;
-          return bFreq - aFreq;
-        });
-        
-        sortedSuggestions.slice(0, 6).forEach(item => {
-          const pill = document.createElement('div');
-          pill.className = 'pill';
-          pill.textContent = item;
-          
-          // Add visual indicator for context-based suggestions
-          if (!serverSuggestions.includes(item)) {
-            pill.style.borderColor = '#cc3300';
-            pill.title = 'Context-based suggestion';
-          }
-          
-          pill.onclick = () => {
-            pick(item); // This will now auto-predict next word
-          };
-          pill.oncontextmenu = (e) => {
-            e.preventDefault();
-            playWord(item);
-          };
-          predictions.appendChild(pill);
-        });
-        predictions.style.display = 'flex';
-      } else {
-        if (predictions) predictions.style.display = 'none';
-      }
+      // Get previous word for context
+      const beforeWordMatch = beforeCursor.match(/(\S+)\s*$/);
+      const previousWord = beforeWordMatch ? beforeWordMatch[1] : '';
+      
+      // Get suggestions for current word
+      const suggestions = getWordSuggestions(currentWord, lang, previousWord);
+      
+      // Update the 4 prediction pills
+      updatePredictionPills(suggestions);
+      
     } catch (e) {
-      if (predictions) predictions.style.display = 'none';
+      console.log('Prediction error:', e);
+      updatePredictionPills([]);
     }
-  }, 150); // Slightly longer timeout for more complex processing
+  }, 100);
 }
 
 function handleTTSKeydown(event) {
@@ -2208,7 +2420,7 @@ async function speak() {
   if (!text) return;
   
   // Learn words and patterns from the text
-  await learnWordsFromText(text);
+  learnFromSpokenText(text, lang);
   updateSentenceHistory(text);
   updateRecentPhrases(text);
   
@@ -2286,25 +2498,8 @@ function updateRecentPhrases(text) {
 
 function updateRecentPhrasesUI() {
   const recentEl = sid('recent');
-  const recent1El = sid('recent1');
-  const recent2El = sid('recent2');
-  
-  if (recentEl && recent1El && recent2El) {
-    if (recentPhrases.length > 0) {
-      recent1El.textContent = recentPhrases[0];
-      recent1El.style.display = 'block';
-    } else {
-      recent1El.style.display = 'none';
-    }
-    
-    if (recentPhrases.length > 1) {
-      recent2El.textContent = recentPhrases[1];
-      recent2El.style.display = 'block';
-    } else {
-      recent2El.style.display = 'none';
-    }
-    
-    recentEl.style.display = (recentPhrases.length > 0) ? 'flex' : 'none';
+  if (recentEl) {
+    recentEl.style.display = 'none';
   }
 }
 
@@ -2504,7 +2699,9 @@ async function waitForStreamReady() {
   for (let i = 0; i < maxAttempts; i++) {
     try {
       // Check if HLS stream is available
-      const response = await fetch('http://172.25.216.108:8888/stream/index.m3u8', {method: 'HEAD'});
+      const host = window.location.hostname;
+      const hlsUrl = `http://${host}:8888/stream/index.m3u8`;
+      const response = await fetch(hlsUrl, {method: 'HEAD'});
       if (response.ok) {
         log('Stream is ready');
         return true;
@@ -2601,7 +2798,8 @@ function updateAutoStreamStatus() {
 
 async function updateStreamPlayer() {
   const video = sid('vid');
-  const webrtcUrl = 'http://172.25.216.108:8889/stream';
+  const host = window.location.hostname;
+  const webrtcUrl = `http://${host}:8889/stream`;
   
   if (!video) return;
   
@@ -2741,7 +2939,8 @@ async function updateStreamPlayer() {
 function forceWebRTCInit() {
   console.log('[ForceWebRTC] Forcing WebRTC player initialization...');
   const video = sid('vid');
-  const webrtcUrl = 'http://172.25.216.108:8889/stream';
+  const host = window.location.hostname;
+  const webrtcUrl = `http://${host}:8889/stream`;
   
   if (!video) {
     console.error('[ForceWebRTC] Video element not found');
@@ -3291,61 +3490,6 @@ async function snap() {
   }
 }
 
-// Battery monitoring
-async function updateBattery() {
-  try {
-    const response = await fetch('/battery');
-    const battery = await response.json();
-    
-    // Update battery percentage display in video info bar
-    const batteryDisplay = sid('battery-display');
-    if (batteryDisplay) {
-      batteryDisplay.textContent = battery.percentage.toFixed(0) + '%';
-      // Add color coding based on battery level
-      if (battery.percentage > 50) {
-        batteryDisplay.style.color = '#0f0'; // Green
-      } else if (battery.percentage > 20) {
-        batteryDisplay.style.color = '#ff0'; // Yellow
-      } else {
-        batteryDisplay.style.color = '#f00'; // Red
-      }
-    }
-    
-    // Update voltage display in video info bar
-    const voltageDisplay = sid('voltage-display');
-    if (voltageDisplay && battery.voltage) {
-      voltageDisplay.textContent = '(' + battery.voltage.toFixed(1) + 'V)';
-      // Add color coding based on voltage level
-      if (battery.voltage > 11.5) {
-        voltageDisplay.style.color = '#0f0'; // Green
-      } else if (battery.voltage > 10.5) {
-        voltageDisplay.style.color = '#ff0'; // Yellow
-      } else {
-        voltageDisplay.style.color = '#f00'; // Red
-      }
-    }
-    
-    // Update battery bar (if it exists in motor panel - for backward compatibility)
-    const fill = sid('batf');
-    const percentage = sid('batp');
-    
-    if (fill && percentage) {
-      fill.style.width = battery.percentage + '%';
-      percentage.textContent = battery.percentage.toFixed(0) + '%';
-      
-      if (battery.percentage > 50) {
-        fill.style.background = '#0f0';
-      } else if (battery.percentage > 20) {
-        fill.style.background = '#ff0';
-      } else {
-        fill.style.background = '#f00';
-      }
-    }
-  } catch (e) {
-    console.error('Battery update error:', e);
-  }
-}
-
 // Audio functions
 async function toggleMicrophone() {
   try {
@@ -3518,6 +3662,61 @@ async function beep(soundId) {
     log(result.ok ? result.msg : ('Sound error: ' + result.msg));
   } catch (e) {
     log('Beep error: ' + e.message);
+  }
+}
+
+// Generate TTS sound and save to slot
+async function generateTTSSound() {
+  const textInput = sid('tts-sound-text');
+  const slotSelect = sid('tts-sound-slot');
+  const statusDiv = sid('tts-sound-status');
+  
+  const text = textInput.value.trim();
+  const soundId = parseInt(slotSelect.value);
+  
+  if (!text) {
+    if (statusDiv) statusDiv.textContent = '❌ Please enter some text';
+    if (statusDiv) statusDiv.style.color = '#f00';
+    return;
+  }
+  
+  if (statusDiv) statusDiv.textContent = '⏳ Generating TTS audio...';
+  if (statusDiv) statusDiv.style.color = '#ff0';
+  
+  try {
+    const language = lang || 'en'; // Use current TTS language
+    
+    const response = await fetch('/generate_sound_from_tts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        text: text,
+        language: language,
+        sound_id: soundId
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.ok) {
+      if (statusDiv) statusDiv.textContent = `✅ ${result.msg}`;
+      if (statusDiv) statusDiv.style.color = '#0f0';
+      log(`✅ Sound ${soundId + 1} generated from TTS: "${text}"`);
+      
+      // Clear input after success
+      textInput.value = '';
+      
+      // Optionally play the generated sound
+      setTimeout(() => beep(soundId), 500);
+    } else {
+      if (statusDiv) statusDiv.textContent = `❌ ${result.msg}`;
+      if (statusDiv) statusDiv.style.color = '#f00';
+      log(`❌ TTS sound generation failed: ${result.msg}`);
+    }
+  } catch (e) {
+    if (statusDiv) statusDiv.textContent = `❌ Error: ${e.message}`;
+    if (statusDiv) statusDiv.style.color = '#f00';
+    log(`❌ TTS sound generation error: ${e.message}`);
   }
 }
 
@@ -3816,7 +4015,8 @@ async function checkNetworkStatus() {
   
   try {
     // Check WebRTC connectivity (use GET instead of HEAD)
-    const webrtcUrl = 'http://172.25.216.108:8889/stream';
+    const host = window.location.hostname;
+    const webrtcUrl = `http://${host}:8889/stream`;
     try {
       const webrtcResponse = await fetch(webrtcUrl, { method: 'GET' });
       if (webrtcResponse.ok) {
@@ -3829,7 +4029,7 @@ async function checkNetworkStatus() {
     }
     
     // Check HLS connectivity (use GET instead of HEAD)
-    const hlsUrl = 'http://172.25.216.108:8888/stream/index.m3u8';
+    const hlsUrl = `http://${host}:8888/stream/index.m3u8`;
     try {
       const hlsResponse = await fetch(hlsUrl, { method: 'GET' });
       if (hlsResponse.ok) {
@@ -3858,6 +4058,42 @@ async function checkNetworkStatus() {
   } catch (error) {
     debugLog(`Network check failed: ${error.message}`, 'error');
   }
+}
+
+function authHeaders() { return {}; }
+
+async function uiRestartStream() {
+  try {
+    const res = await fetch('/api/stream/restart', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }});
+    const data = await res.json();
+    debugLog(`Restart stream: ${data.message || data.status || res.status}`, data.success ? 'success' : 'warning');
+    await updateStreamPlayer();
+  } catch (e) { debugLog(`Restart error: ${e.message}`, 'error'); }
+}
+
+async function uiRefreshStream() {
+  try {
+    const res = await fetch('/api/stream/refresh', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }});
+    const data = await res.json();
+    debugLog(`Refresh stream: ${data.message || data.status || res.status}`, data.success ? 'success' : 'warning');
+    await updateStreamPlayer();
+  } catch (e) { debugLog(`Refresh error: ${e.message}`, 'error'); }
+}
+
+async function uiCleanupSystem() {
+  try {
+    const res = await fetch('/api/system/cleanup', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }});
+    const data = await res.json();
+    debugLog(`System cleanup: ${data.message || res.status}`, (data.cleanup_success && data.validation_success) ? 'success' : 'warning');
+  } catch (e) { debugLog(`Cleanup error: ${e.message}`, 'error'); }
+}
+
+async function uiAutoRecovery() {
+  try {
+    const res = await fetch('/api/system/auto-recovery', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }});
+    const data = await res.json();
+    debugLog(`Auto-recovery: ${data.message || res.status}`, data.success ? 'success' : 'warning');
+  } catch (e) { debugLog(`Auto-recovery error: ${e.message}`, 'error'); }
 }
 
 async function checkStreamStatus() {
@@ -4349,11 +4585,12 @@ async function init() {
   // Run auto-recovery first
   await autoRecoveryStream();
   
-  // Then run a gentle refresh after a delay to ensure everything is working
+  // Disabled automatic stream refresh on page load to prevent cascade failures
+  // User can manually start/refresh stream using the UI controls
   setTimeout(async () => {
     try {
-      console.log('[Init] Running gentle stream refresh after initialization...');
-      await refreshStream();
+      console.log('[Init] Automatic stream refresh disabled - use UI controls to start stream');
+      // await refreshStream(); // DISABLED to prevent service crashes
     } catch (error) {
       console.error('[Init] Gentle refresh failed, continuing with current state:', error);
     }
@@ -4364,8 +4601,6 @@ async function init() {
   
   // Set initial state
   setLang('en');
-  updateBattery();
-  setInterval(updateBattery, 60000); // Update battery every minute
   
   // Load sound names from localStorage
   loadSoundNames();
@@ -4390,8 +4625,8 @@ async function init() {
   // Simple page visibility handling
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) {
-      console.log('[Init] Page restored from cache, running stream refresh...');
-      setTimeout(() => refreshStream(), 1000);
+      console.log('[Init] Page restored from cache - automatic refresh disabled');
+      // setTimeout(() => refreshStream(), 1000); // DISABLED to prevent service crashes
     }
   });
   

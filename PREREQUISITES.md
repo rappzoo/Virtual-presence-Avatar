@@ -357,3 +357,4 @@ echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governo
 ---
 
 **Need help?** Check the [README.md](README.md) or open an issue on GitHub!
+

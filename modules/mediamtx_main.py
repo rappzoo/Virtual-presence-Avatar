@@ -14,6 +14,8 @@ import datetime
 from pathlib import Path
 from flask import Flask, Response, request, jsonify, send_file, render_template_string
 from flask_socketio import SocketIO, emit
+import eventlet
+eventlet.monkey_patch()
 
 
 # Ensure all modules can be imported
@@ -66,11 +68,29 @@ except ImportError as e:
 # Create Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'avatar_tank_mediamtx_secret_key'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*", 
+    async_mode='eventlet',
+    logger=False,
+    engineio_logger=False,
+    ping_timeout=60,
+    ping_interval=25,
+    max_http_buffer_size=1000000
+)
+
+# Simple bearer token auth for control endpoints
+# Auth disabled for simplicity
+def _require_token():
+    return True
 
 # Global state
 running = False
 recording = False
+
+# Global lock for stream operations to prevent concurrent FFmpeg spawning
+stream_operation_lock = threading.Lock()
+print("[MediaMTX Main] Stream operation lock initialized")
 
 
 # ============== Web Interface ==============
@@ -230,7 +250,7 @@ def create_templates():
             <div class="control-group">
                 <label>HLS Stream:</label>
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="text" id="hls-url" value="http://192.168.68.107:8888/stream/index.m3u8" readonly style="flex: 1; padding: 5px;">
+                    <input type="text" id="hls-url" value="" readonly style="flex: 1; padding: 5px;">
                     <button onclick="copyToClipboard('hls-url')">Copy</button>
                 </div>
             </div>
@@ -244,7 +264,7 @@ def create_templates():
             <div class="control-group">
                 <label>WebRTC Stream:</label>
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="text" id="webrtc-url" value="http://192.168.68.107:8889/stream" readonly style="flex: 1; padding: 5px;">
+                    <input type="text" id="webrtc-url" value="" readonly style="flex: 1; padding: 5px;">
                     <button onclick="copyToClipboard('webrtc-url')">Copy</button>
                 </div>
             </div>
@@ -522,7 +542,8 @@ def create_templates():
 
         function updateStreamPlayer() {
             const video = document.getElementById('stream-player');
-            const hlsUrl = 'http://192.168.68.107:8888/stream/index.m3u8';
+            const host = window.location.hostname;
+            const hlsUrl = `http://${host}:8888/stream/index.m3u8`;
             
             if (Hls.isSupported()) {
                 // Use HLS.js for better browser compatibility
@@ -575,6 +596,17 @@ def create_templates():
         }
 
         // Auto-refresh status every 5 seconds
+        function setDynamicUrls() {
+            const host = window.location.hostname;
+            const hls = document.getElementById('hls-url');
+            const rtsp = document.getElementById('rtsp-url');
+            const webrtc = document.getElementById('webrtc-url');
+            if (hls) hls.value = `http://${host}:8888/stream/index.m3u8`;
+            if (rtsp) rtsp.value = `rtsp://${host}:8554/stream`;
+            if (webrtc) webrtc.value = `http://${host}:8889/stream`;
+        }
+
+        setDynamicUrls();
         setInterval(loadStatus, 5000);
     </script>
 </body>
@@ -756,13 +788,25 @@ def play_word():
 def motor_control(direction):
     """Motor control endpoint"""
     try:
-        data = request.get_json()
-        speed = data.get('speed', 150)
-        
+        if not _require_token():
+            return jsonify({"ok": False, "msg": "Unauthorized"}), 401
+        data = request.get_json() or {}
+        speed = int(data.get('speed', 150))
         print(f"[Motor] {direction} at speed {speed}")
-        
-        # For now, just log the command (you can integrate with actual motor control later)
-        return jsonify({"ok": True, "msg": f"Motor {direction} at {speed}"})
+        from modules.motor_controller import motors
+        if direction == 'forward':
+            result = motors.move(speed, speed)
+        elif direction == 'backward':
+            result = motors.move(-speed, -speed)
+        elif direction == 'left':
+            result = motors.move(-speed, speed)
+        elif direction == 'right':
+            result = motors.move(speed, -speed)
+        elif direction == 'stop':
+            result = motors.stop()
+        else:
+            return jsonify({"ok": False, "msg": "Unknown direction"}), 400
+        return jsonify(result)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Motor error: {e}"})
 
@@ -770,8 +814,12 @@ def motor_control(direction):
 def motor_test():
     """Motor test endpoint"""
     try:
+        if not _require_token():
+            return jsonify({"ok": False, "msg": "Unauthorized"}), 401
         print("[Motor] Running motor test")
-        return jsonify({"ok": True, "msg": "Motor test completed"})
+        from modules.motor_controller import motors
+        result = motors.test_motors()
+        return jsonify(result)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Motor test error: {e}"})
 
@@ -779,25 +827,14 @@ def motor_test():
 def motor_reconnect():
     """Motor reconnect endpoint"""
     try:
+        if not _require_token():
+            return jsonify({"ok": False, "msg": "Unauthorized"}), 401
         print("[Motor] Reconnecting motors")
-        return jsonify({"ok": True, "msg": "Motors reconnected"})
+        from modules.motor_controller import reconnect_motor_controller
+        ok = reconnect_motor_controller()
+        return jsonify({"ok": bool(ok), "msg": "Motors reconnected" if ok else "Reconnect failed"})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Motor reconnect error: {e}"})
-
-# ============== Battery Routes ==============
-
-@app.route('/battery')
-def get_battery():
-    """Battery status endpoint"""
-    try:
-        # Mock battery data (you can integrate with actual battery monitoring later)
-        battery_data = {
-            "percentage": 85.0,
-            "voltage": 12.3
-        }
-        return jsonify(battery_data)
-    except Exception as e:
-        return jsonify({"percentage": 0, "voltage": 0, "error": str(e)})
 
 # ============== Sound Effects Routes ==============
 
@@ -827,7 +864,6 @@ def play_sound(sound_id):
                     print(f"[Sound] Using default sound for ID {sound_id}: {sound_path}")
                 else:
                     # Create a simple beep sound using system beep
-                    import subprocess
                     try:
                         subprocess.run(['beep', '-f', '800', '-l', '200'], check=False, capture_output=True)
                         return jsonify({"ok": True, "msg": f"System beep played for sound {sound_id + 1}"})
@@ -866,12 +902,121 @@ def play_sound(sound_id):
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Sound error: {e}"})
 
+@app.route('/generate_sound_from_tts', methods=['POST'])
+def generate_sound_from_tts():
+    """Generate TTS audio and save it as a sound effect"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        language = data.get('language', 'en')
+        sound_id = data.get('sound_id', 0)  # 0-19 for 20 slots
+        
+        if not text:
+            return jsonify({"ok": False, "msg": "No text provided"})
+        
+        if not 0 <= sound_id <= 19:
+            return jsonify({"ok": False, "msg": "Invalid sound ID (must be 0-19)"})
+        
+        print(f"[Sound TTS] Generating sound {sound_id + 1} from text: '{text}' ({language})")
+        
+        # Generate TTS audio
+        try:
+            from modules.tts import tts as tts_module
+            
+            # Get the language directory and find model
+            if language not in tts_module.languages:
+                return jsonify({"ok": False, "msg": f"Unsupported language: {language}"})
+            
+            lang_dir = tts_module.languages[language]['dir']
+            
+            # Generate to temporary file
+            temp_wav = "/tmp/tts_sound_gen.wav"
+            
+            # Use Piper to generate audio
+            if tts_module.bin and tts_module.kind == "cli":
+                # Piper CLI mode
+                model, cfg = tts_module._find_model_pair(lang_dir)
+                if not model or not cfg:
+                    return jsonify({"ok": False, "msg": f"No Piper model found for {language}"})
+                
+                p = subprocess.run(
+                    [tts_module.bin, "--model", model, "--config", cfg, "--output_file", temp_wav],
+                    input=(text + "\n"), 
+                    text=True,
+                    stdout=subprocess.DEVNULL, 
+                    stderr=subprocess.PIPE, 
+                    check=False
+                )
+                
+                if p.returncode != 0 or not os.path.exists(temp_wav):
+                    return jsonify({"ok": False, "msg": "TTS generation failed"})
+                    
+            elif tts_module.bin and tts_module.kind == "piper":
+                # Piper mode
+                model = tts_module._find_model_single(lang_dir)
+                if not model:
+                    return jsonify({"ok": False, "msg": f"No Piper model found for {language}"})
+                
+                p = subprocess.run(
+                    [tts_module.bin, "--model", model, "--output_file", temp_wav],
+                    input=(text + "\n"),
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    check=False
+                )
+                
+                if p.returncode != 0 or not os.path.exists(temp_wav):
+                    return jsonify({"ok": False, "msg": "TTS generation failed"})
+            else:
+                return jsonify({"ok": False, "msg": "No TTS engine available"})
+            
+            # Convert WAV to MP3 using ffmpeg
+            module_dir = Path(__file__).parent
+            sound_dir = module_dir / ".." / "sounds"
+            sound_dir.mkdir(exist_ok=True)
+            
+            output_mp3 = sound_dir / f"sound{sound_id + 1}.mp3"
+            
+            # Convert with ffmpeg
+            conv_result = subprocess.run(
+                ['ffmpeg', '-y', '-i', temp_wav, '-codec:a', 'libmp3lame', '-qscale:a', '2', str(output_mp3)],
+                capture_output=True,
+                text=True
+            )
+            
+            if conv_result.returncode != 0:
+                return jsonify({"ok": False, "msg": "MP3 conversion failed"})
+            
+            # Clean up temp file
+            if os.path.exists(temp_wav):
+                os.unlink(temp_wav)
+            
+            print(f"[Sound TTS] Successfully saved sound {sound_id + 1}: {output_mp3}")
+            return jsonify({
+                "ok": True, 
+                "msg": f"Sound {sound_id + 1} created from TTS",
+                "file": f"sound{sound_id + 1}.mp3",
+                "text": text,
+                "language": language
+            })
+            
+        except ImportError as e:
+            return jsonify({"ok": False, "msg": f"TTS module not available: {e}"})
+        except Exception as e:
+            return jsonify({"ok": False, "msg": f"TTS generation error: {e}"})
+            
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Sound generation error: {e}"})
+
 # ============== Audio Control Routes ==============
 
 @app.route('/audio/set_volume', methods=['POST'])
 def set_volume():
     """Set audio volume endpoint"""
     try:
+        if not _require_token():
+            return jsonify({"ok": False, "msg": "Unauthorized"}), 401
         data = request.get_json()
         volume = data.get('volume', 70)
         mute = data.get('mute', False)
@@ -922,10 +1067,22 @@ def mic_test():
 def system_reboot():
     """System reboot endpoint"""
     try:
-        print("[System] Reboot requested")
+        if not _require_token():
+            return jsonify({"ok": False, "msg": "Unauthorized"}), 401
+        print("[System] ⚠️  REBOOT REQUESTED - System will reboot in 3 seconds")
         
-        # For safety, just log the request (you can implement actual reboot later)
-        return jsonify({"ok": True, "msg": "Reboot command logged (not executed for safety)"})
+        # Schedule reboot in a separate thread to allow response to be sent
+        def execute_reboot():
+            import time
+            time.sleep(3)  # Give time for response to be sent
+            print("[System] Executing reboot command...")
+            subprocess.run(['sudo', 'reboot'], check=False)
+        
+        import threading
+        reboot_thread = threading.Thread(target=execute_reboot, daemon=True)
+        reboot_thread.start()
+        
+        return jsonify({"ok": True, "msg": "System will reboot in 3 seconds"})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Reboot error: {e}"})
 
@@ -1074,15 +1231,24 @@ def get_status():
 def start_stream_api():
     """Start MediaMTX streaming"""
     try:
-        result = start_streaming()
-        return jsonify(result)
+        # Use refresh to ensure FFmpeg is actually started and MediaMTX sees tracks
+        if not _require_token():
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        return refresh_stream_api()
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/stream/refresh', methods=['POST'])
 def refresh_stream_api():
     """Complete stream refresh - stop all FFmpeg processes and restart with audio"""
+    # Try to acquire lock, return immediately if already in progress
+    if not stream_operation_lock.acquire(blocking=False):
+        print("[Stream Refresh] Another stream operation in progress, skipping...")
+        return jsonify({'success': False, 'message': 'Stream operation already in progress'}), 409
+    
     try:
+        if not _require_token():
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         import subprocess
         import time
         
@@ -1154,11 +1320,17 @@ def refresh_stream_api():
     except Exception as e:
         print(f"[Stream Refresh] Error: {e}")
         return jsonify({'success': False, 'message': f"Refresh error: {str(e)}"}), 500
+    finally:
+        # Always release the lock
+        stream_operation_lock.release()
+        print("[Stream Refresh] Lock released")
 
 @app.route('/api/stream/restart', methods=['POST'])
 def restart_stream_api():
     """Restart streaming for reliability"""
     try:
+        if not _require_token():
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         # Import time module
         import time
         
@@ -1179,6 +1351,8 @@ def restart_stream_api():
 def update_framerate_smooth():
     """Update framerate smoothly without interrupting stream"""
     try:
+        if not _require_token():
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         data = request.get_json()
         if not data or 'framerate' not in data:
             return jsonify({'success': False, 'message': 'Framerate not specified'}), 400
@@ -1219,6 +1393,8 @@ def update_framerate_smooth():
 def stop_stream_api():
     """Stop MediaMTX streaming"""
     try:
+        if not _require_token():
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         result = stop_streaming()
         return jsonify(result)
     except Exception as e:
@@ -1233,6 +1409,8 @@ recording_filename = None
 def start_recording_api():
     """Start reliable recording without breaking the stream"""
     try:
+        if not _require_token():
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         global recording_process, recording_start_time, recording_filename
         
         # First, check for any orphaned FFmpeg recording processes
@@ -1284,6 +1462,8 @@ def start_recording_api():
 def stop_recording_api():
     """Stop reliable recording"""
     try:
+        if not _require_token():
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         global recording_process, recording_start_time, recording_filename
         
         if recording_process is None or recording_process.poll() is not None:
@@ -1298,6 +1478,8 @@ def stop_recording_api():
 def take_snapshot_api():
     """Take a reliable snapshot without breaking the stream"""
     try:
+        if not _require_token():
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         result = _take_reliable_snapshot()
         return jsonify(result)
     except Exception as e:
@@ -1578,6 +1760,8 @@ def mediamtx_metrics():
 def mediamtx_config():
     """Update MediaMTX configuration"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         data = request.get_json()
         parameter = data.get('parameter')
         value = data.get('value')
@@ -1599,6 +1783,8 @@ def mediamtx_config():
 def mediamtx_hooks():
     """Register MediaMTX hooks"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         data = request.get_json()
         hooks = data.get('hooks', [])
         
@@ -1631,11 +1817,17 @@ def main():
     print("[MediaMTX Main] Starting Avatar Tank MediaMTX control interface...")
     print("[MediaMTX Main] Access the control interface at:")
     print("  - http://localhost:5000")
-    print("  - http://192.168.68.107:5000 (4G router)")
-    print("  - http://172.25.216.108:5000 (mobile network)")
+    try:
+        hostnames = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+        if hostnames.returncode == 0:
+            for ip in hostnames.stdout.strip().split():
+                print(f"  - http://{ip}:5000")
+    except Exception:
+        pass
     
-    # Start the web server
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    # Start the web server (disable reloader to avoid forking under systemd)
+    print("[MediaMTX Main] Launching web server on 0.0.0.0:5000")
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 
 def _start_reliable_recording():
@@ -2201,6 +2393,8 @@ def trigger_recovery():
 def system_cleanup():
     """Manually trigger system cleanup and recovery"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         from modules.mediamtx_camera import cleanup_zombie_processes, validate_system_state
         
         # Clean up zombie processes
@@ -2222,6 +2416,8 @@ def system_cleanup():
 def trigger_auto_recovery():
     """Manually trigger automatic recovery"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         from modules.mediamtx_camera import auto_recovery_on_startup
         
         success = auto_recovery_on_startup()
@@ -2238,6 +2434,8 @@ def trigger_auto_recovery():
 def auto_start_stream():
     """Automatically start stream if conditions are met"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         from modules.mediamtx_camera import start_streaming, get_streaming_status
         
         # Check current status
@@ -2265,6 +2463,8 @@ def auto_start_stream():
 def start_recording():
     """Start robust recording directly from FFmpeg source"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         from modules.mediamtx_camera import recording_manager
         result = recording_manager.start_recording()
         return jsonify(result)
@@ -2275,6 +2475,8 @@ def start_recording():
 def stop_recording():
     """Stop recording gracefully"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         from modules.mediamtx_camera import recording_manager
         result = recording_manager.stop_recording()
         return jsonify(result)
@@ -2294,6 +2496,8 @@ def _get_recording_status_internal():
 def get_recording_status():
     """Get current recording status"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         from modules.mediamtx_camera import recording_manager
         status = recording_manager.get_recording_status()
         return jsonify(status)
@@ -2304,6 +2508,8 @@ def get_recording_status():
 def list_recordings():
     """List all recording files"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         from modules.mediamtx_camera import recording_manager
         recordings = recording_manager.list_recordings()
         return jsonify({'recordings': recordings})
@@ -2314,11 +2520,25 @@ def list_recordings():
 def resume_recording():
     """Manually trigger recording resume"""
     try:
+        if not _require_token():
+            return jsonify({'error': 'Unauthorized'}), 401
         from modules.mediamtx_camera import recording_manager
         recording_manager.auto_resume_recording()
         return jsonify({'status': 'Recording resume triggered'})
     except Exception as e:
         return jsonify({'error': str(e)})
+
+@app.route('/metrics')
+def metrics():
+    try:
+        from modules.mediamtx_camera import get_streaming_status
+        status = get_streaming_status()
+        lines = [
+            f"avatar_stream_active {1 if status.get('active') else 0}",
+        ]
+        return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
+    except Exception as e:
+        return f"avatar_metrics_error 1\n# {e}\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
 
 # Background bandwidth management thread
 def bandwidth_management_thread():
@@ -2497,9 +2717,10 @@ if __name__ == "__main__":
     monitor_thread.start()
     print("[Audio Monitor] Background audio quality monitoring started")
     
-    # Start stream health monitoring thread
-    health_thread = threading.Thread(target=stream_health_monitor_thread, daemon=True)
-    health_thread.start()
-    print("[Stream Health] Background stream health monitoring started")
+    # DISABLED: Stream health monitoring was causing automatic restarts and crashes
+    # Users should manually start/stop streams via the UI for stability
+    # health_thread = threading.Thread(target=stream_health_monitor_thread, daemon=True)
+    # health_thread.start()
+    print("[Stream Health] Stream health auto-monitoring DISABLED for stability")
     
     main()

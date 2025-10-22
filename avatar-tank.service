@@ -1,0 +1,23 @@
+[Unit]
+Description=Avatar Tank System
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=havatar
+Group=havatar
+WorkingDirectory=/home/havatar/Avatar-robot
+ExecStart=/home/havatar/Avatar-robot/start_avatar_simple.sh
+Restart=always
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=10
+KillSignal=SIGTERM
+KillMode=mixed
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

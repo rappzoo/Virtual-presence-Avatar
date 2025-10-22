@@ -277,3 +277,4 @@ By contributing to Avatar Tank, you agree that your contributions will be licens
 ---
 
 **Thank you for contributing to Avatar Tank! 🚀**
+
