@@ -842,7 +842,9 @@ def motor_reconnect():
 def play_sound(sound_id):
     """Play sound effect endpoint"""
     try:
+        from modules.device_detector import SPK_PLUG
         print(f"[Sound] Playing sound effect {sound_id}")
+        print(f"[Sound] Using speaker device: {SPK_PLUG}")
         
         # Map sound_id to actual sound files (1-10)
         # Get the directory where this module is located
@@ -872,32 +874,47 @@ def play_sound(sound_id):
             else:
                 return jsonify({"ok": False, "msg": f"Sound file not found: {sound_file}"})
         
-        # Use mpg123 or ffplay to play MP3 files
+        # Convert MP3 to WAV and play through the correct audio device
         try:
-            # Try mpg123 first
-            cmd = ['mpg123', '-q', str(sound_path)]
-            result = subprocess.run(cmd, capture_output=True, timeout=10)
+            # Convert to temporary WAV file first (more reliable than piping)
+            temp_wav = "/tmp/sound_playback.wav"
             
-            if result.returncode == 0:
+            # Convert MP3 to WAV
+            convert_result = subprocess.run(
+                ['ffmpeg', '-y', '-i', str(sound_path), '-ar', '44100', '-ac', '2', temp_wav],
+                capture_output=True,
+                timeout=10
+            )
+            
+            if convert_result.returncode != 0 or not os.path.exists(temp_wav):
+                print(f"[Sound] FFmpeg conversion failed: {convert_result.stderr.decode('utf-8', 'ignore')}")
+                return jsonify({"ok": False, "msg": "MP3 to WAV conversion failed"})
+            
+            # Play the WAV file through the detected speaker device
+            play_result = subprocess.run(
+                ['aplay', '-q', '-D', SPK_PLUG, temp_wav],
+                capture_output=True,
+                timeout=10
+            )
+            
+            # Clean up temp file
+            try:
+                os.unlink(temp_wav)
+            except:
+                pass
+            
+            if play_result.returncode == 0:
+                print(f"[Sound] Successfully played sound {sound_id + 1} on {SPK_PLUG}")
                 return jsonify({"ok": True, "msg": f"Playing sound {sound_id + 1}"})
             else:
-                # Fallback: use ffplay
-                try:
-                    cmd = ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', str(sound_path)]
-                    result = subprocess.run(cmd, capture_output=True, timeout=10)
-                    if result.returncode == 0:
-                        return jsonify({"ok": True, "msg": f"Playing sound {sound_id + 1}"})
-                    else:
-                        return jsonify({"ok": False, "msg": "Sound playback failed"})
-                except subprocess.TimeoutExpired:
-                    return jsonify({"ok": False, "msg": "Sound timeout"})
-                except FileNotFoundError:
-                    return jsonify({"ok": False, "msg": "No MP3 player available"})
+                error_msg = play_result.stderr.decode('utf-8', 'ignore').strip() if play_result.stderr else "Unknown error"
+                print(f"[Sound] Playback error: {error_msg}")
+                return jsonify({"ok": False, "msg": f"Sound playback failed: {error_msg}"})
                     
         except subprocess.TimeoutExpired:
             return jsonify({"ok": False, "msg": "Sound timeout"})
-        except FileNotFoundError:
-            return jsonify({"ok": False, "msg": "mpg123 not available"})
+        except FileNotFoundError as e:
+            return jsonify({"ok": False, "msg": f"Required tool not found: {e}"})
             
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Sound error: {e}"})
