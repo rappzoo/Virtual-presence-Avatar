@@ -1457,13 +1457,25 @@ def refresh_stream_api():
         height = settings['height']
         fps = settings['fps']
         
-        print(f"[Stream Refresh] Starting new FFmpeg process with {resolution} ({width}x{height}@{fps}fps)...")
+        # Resolution-specific bitrate mapping for proper bandwidth control
+        bitrate_map = {
+            "320p": ("500k", "700k"),   # 640x360 - low bandwidth (target, max)
+            "480p": ("1200k", "1500k"), # 854x480 - medium bandwidth
+            "720p": ("2500k", "3000k")  # 1280x720 - high bandwidth
+        }
+        video_bitrate, max_bitrate = bitrate_map.get(resolution, ("1200k", "1500k"))
+        
+        print(f"[Stream Refresh] Starting new FFmpeg process with {resolution} ({width}x{height}@{fps}fps, {video_bitrate} bitrate)...")
         cmd = [
             'ffmpeg', '-nostdin',
             '-f', 'v4l2', '-i', '/dev/video0',
             '-f', 'alsa', '-i', 'plughw:3,0',
             '-vf', f'scale={width}:{height},fps={fps},format=yuv420p',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-g', str(fps), 
+            '-c:v', 'libx264', '-preset', 'ultrafast', 
+            '-b:v', video_bitrate,      # Target bitrate (resolution-specific)
+            '-maxrate', max_bitrate,    # Maximum bitrate
+            '-bufsize', f'{int(max_bitrate[:-1])*2}k',  # Buffer size = 2x maxrate
+            '-g', str(fps), 
             '-sc_threshold', '0', '-profile:v', 'main', '-level', '3.0',
             '-c:a', 'libopus', '-b:a', '32k',
             '-rtsp_transport', 'tcp',
