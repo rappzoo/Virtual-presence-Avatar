@@ -2021,6 +2021,22 @@ def main():
     
     # Start the web server (disable reloader to avoid forking under systemd)
     print("[MediaMTX Main] Launching web server on 0.0.0.0:5000")
+    
+    # Check if port is already in use (detect duplicate service instances)
+    import socket
+    test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        test_sock.bind(('0.0.0.0', 5000))
+        test_sock.close()
+        print("[MediaMTX Main] Port 5000 is available")
+    except OSError as e:
+        print(f"[MediaMTX Main] ⚠️  ERROR: Port 5000 is already in use!")
+        print(f"[MediaMTX Main] ⚠️  This indicates a duplicate service instance is running.")
+        print(f"[MediaMTX Main] ⚠️  Check: sudo systemctl status avatar-tank avatar-mediamtx")
+        print(f"[MediaMTX Main] ⚠️  Disable duplicates: sudo systemctl disable avatar-mediamtx")
+        import sys
+        sys.exit(1)
+    
     socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 
