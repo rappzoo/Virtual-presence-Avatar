@@ -466,3 +466,11 @@ dumb
 aaa
 aa
 aye
+self
+distruct
+sequence
+activated
+run
+advise
+you
+to

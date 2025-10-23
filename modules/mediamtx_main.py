@@ -975,25 +975,45 @@ def play_sound(sound_id):
         
         # Convert MP3 to WAV and play through the correct audio device
         try:
+            # Get audio duration first to set appropriate timeout
+            duration = 10.0  # Default timeout
+            try:
+                probe_result = subprocess.run(
+                    ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', 
+                     '-of', 'default=noprint_wrappers=1:nokey=1', str(sound_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if probe_result.returncode == 0:
+                    duration = float(probe_result.stdout.strip())
+                    print(f"[Sound] Detected duration: {duration:.1f}s")
+            except (ValueError, subprocess.TimeoutExpired):
+                print(f"[Sound] Could not detect duration, using default timeout")
+            
+            # Set timeout to duration + 5 seconds buffer, minimum 10s, maximum 60s
+            playback_timeout = max(10, min(60, duration + 5))
+            print(f"[Sound] Using timeout: {playback_timeout:.1f}s")
+            
             # Convert to temporary WAV file first (more reliable than piping)
             temp_wav = "/tmp/sound_playback.wav"
             
-            # Convert MP3 to WAV
+            # Convert MP3 to WAV (timeout = 2x expected duration)
             convert_result = subprocess.run(
                 ['ffmpeg', '-y', '-i', str(sound_path), '-ar', '44100', '-ac', '2', temp_wav],
                 capture_output=True,
-                timeout=10
+                timeout=max(10, duration * 2)
             )
             
             if convert_result.returncode != 0 or not os.path.exists(temp_wav):
                 print(f"[Sound] FFmpeg conversion failed: {convert_result.stderr.decode('utf-8', 'ignore')}")
                 return jsonify({"ok": False, "msg": "MP3 to WAV conversion failed"})
             
-            # Play the WAV file through the detected speaker device
+            # Play the WAV file through the detected speaker device with dynamic timeout
             play_result = subprocess.run(
                 ['aplay', '-q', '-D', SPK_PLUG, temp_wav],
                 capture_output=True,
-                timeout=10
+                timeout=playback_timeout
             )
             
             # Clean up temp file
