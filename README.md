@@ -405,6 +405,91 @@ sudo usermod -a -G dialout havatar
 screen /dev/ttyACM0 115200
 ```
 
+## 🔧 Service Management
+
+### **Service Audit & Health Check**
+
+Run the automated service audit script to check for configuration issues:
+
+```bash
+bash /home/havatar/Avatar-robot/scripts/check_services.sh
+```
+
+This script checks:
+- ✅ Only `avatar-tank.service` is enabled and running
+- ✅ No duplicate MediaMTX services (`mediamtx.service`, `avatar-mediamtx.service`)
+- ✅ Single MediaMTX instance with correct parent process
+- ✅ All required ports are accessible (5000, 8554, 8888, 8889)
+- ✅ Memory usage is healthy (< 85%)
+- ✅ No recent OOM (Out of Memory) kills
+
+**Example output (healthy system):**
+```
+🔍 Avatar Tank Service Audit
+============================
+
+📋 Checking enabled services...
+  ✓ avatar-tank.service is ENABLED (correct)
+  ✓ avatar-mediamtx.service is disabled (correct)
+  ✓ mediamtx.service is disabled (correct)
+
+📊 Checking running services...
+  ✓ avatar-tank.service is running
+  
+🔢 Checking MediaMTX instance count...
+  Found: 1 MediaMTX binary process(es)
+  ✓ Correct! Only 1 MediaMTX instance
+  ✓ MediaMTX is correctly launched by avatar-tank
+
+💾 Checking memory usage...
+  ✓ Memory usage is healthy (15%)
+  
+✅ ALL CHECKS PASSED!
+```
+
+### **Common Service Commands**
+
+```bash
+# Check service status
+sudo systemctl status avatar-tank.service
+
+# Restart service
+sudo systemctl restart avatar-tank.service
+
+# View live logs
+sudo journalctl -u avatar-tank.service -f
+
+# View recent logs
+sudo journalctl -u avatar-tank.service -n 100
+
+# Check for errors
+sudo journalctl -u avatar-tank.service | grep -i error
+
+# Disable duplicate services (if found)
+sudo systemctl stop mediamtx.service avatar-mediamtx.service
+sudo systemctl disable mediamtx.service avatar-mediamtx.service
+```
+
+### **CRITICAL: Preventing OOM Crashes**
+
+⚠️ **Never run multiple MediaMTX services simultaneously!** This causes:
+- Port conflicts
+- Memory pressure
+- OOM (Out of Memory) killer terminating processes
+- System crashes and SSH failures
+
+**Only `avatar-tank.service` should be enabled.** This service internally manages:
+- Python Flask application (port 5000)
+- MediaMTX streaming server (ports 8554, 8888, 8889)
+- All child processes
+
+If you experience crashes, run the service audit script:
+```bash
+bash /home/havatar/Avatar-robot/scripts/check_services.sh
+```
+
+See `INCIDENT_REPORT_2025-10-24_OOM_CRASH.md` for detailed crash analysis and prevention.
+
 ## 🔒 Security
 
 ### **Network Security**
