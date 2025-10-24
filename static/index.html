@@ -212,10 +212,10 @@
     .container {
       display: grid;
       grid-template-areas:
-        "tts tts tts"
-        "motor video audio"
-        "log log log";
-      grid-template-columns: 312px 1fr 320px;
+        "tts tts tts tts tts"
+        "motor left-sounds video right-sounds audio"
+        "log log log log log";
+      grid-template-columns: 312px 120px 1fr 120px 320px;
       grid-template-rows: 70px minmax(400px, 1fr) 60px;
       gap: 12px;
       padding: 12px;
@@ -661,6 +661,63 @@
       transform: translateY(-1px);
     }
     
+    .left-sounds-panel, .right-sounds-panel {
+      background: rgba(40, 20, 20, 0.95);
+      border: 2px solid #cc3300;
+      border-radius: 12px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+    }
+    
+    .left-sounds-panel { grid-area: left-sounds; }
+    .right-sounds-panel { grid-area: right-sounds; }
+    
+    .side-sbtn {
+      background: linear-gradient(145deg, #660033, #990044);
+      border: 2px solid #cc3300;
+      color: #ffffff;
+      padding: 8px 4px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+      transition: all 0.2s;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-height: 36px;
+    }
+    
+    .side-sbtn:hover {
+      background: #cc3300;
+      transform: scale(1.05);
+    }
+    
+    .lang-switch-btn {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid #555;
+      color: #aaa;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .lang-switch-btn:hover {
+      background: rgba(204, 51, 0, 0.3);
+      border-color: #cc3300;
+      color: #fff;
+    }
+    
+    .lang-switch-btn.active {
+      background: #cc3300;
+      border-color: #cc3300;
+      color: #fff;
+      font-weight: bold;
+    }
+    
     .log {
       grid-area: log;
       background: rgba(0, 0, 0, 0.9);
@@ -807,31 +864,128 @@
       </div>
       <div style="display: flex; gap: 4px; align-items: center;">
         <select id="tts-sound-slot" style="flex: 1; padding: 6px; font-size: 10px; background: rgba(0,0,0,0.3); border: 1px solid #555; border-radius: 4px; color: #fff;">
-          <option value="0">Save to Slot 1</option>
-          <option value="1">Save to Slot 2</option>
-          <option value="2">Save to Slot 3</option>
-          <option value="3">Save to Slot 4</option>
-          <option value="4">Save to Slot 5</option>
-          <option value="5">Save to Slot 6</option>
-          <option value="6">Save to Slot 7</option>
-          <option value="7">Save to Slot 8</option>
-          <option value="8">Save to Slot 9</option>
-          <option value="9">Save to Slot 10</option>
-          <option value="10">Save to Slot 11</option>
-          <option value="11">Save to Slot 12</option>
-          <option value="12">Save to Slot 13</option>
-          <option value="13">Save to Slot 14</option>
-          <option value="14">Save to Slot 15</option>
-          <option value="15">Save to Slot 16</option>
-          <option value="16">Save to Slot 17</option>
-          <option value="17">Save to Slot 18</option>
-          <option value="18">Save to Slot 19</option>
-          <option value="19">Save to Slot 20</option>
+          <optgroup label="Main Sounds (1-20)">
+            <option value="0">Slot 1</option>
+            <option value="1">Slot 2</option>
+            <option value="2">Slot 3</option>
+            <option value="3">Slot 4</option>
+            <option value="4">Slot 5</option>
+            <option value="5">Slot 6</option>
+            <option value="6">Slot 7</option>
+            <option value="7">Slot 8</option>
+            <option value="8">Slot 9</option>
+            <option value="9">Slot 10</option>
+            <option value="10">Slot 11</option>
+            <option value="11">Slot 12</option>
+            <option value="12">Slot 13</option>
+            <option value="13">Slot 14</option>
+            <option value="14">Slot 15</option>
+            <option value="15">Slot 16</option>
+            <option value="16">Slot 17</option>
+            <option value="17">Slot 18</option>
+            <option value="18">Slot 19</option>
+            <option value="19">Slot 20</option>
+          </optgroup>
+          <optgroup label="EN Quick Sounds (21-40)">
+            <option value="20">Slot 21 (EN)</option>
+            <option value="21">Slot 22 (EN)</option>
+            <option value="22">Slot 23 (EN)</option>
+            <option value="23">Slot 24 (EN)</option>
+            <option value="24">Slot 25 (EN)</option>
+            <option value="25">Slot 26 (EN)</option>
+            <option value="26">Slot 27 (EN)</option>
+            <option value="27">Slot 28 (EN)</option>
+            <option value="28">Slot 29 (EN)</option>
+            <option value="29">Slot 30 (EN)</option>
+            <option value="30">Slot 31 (EN)</option>
+            <option value="31">Slot 32 (EN)</option>
+            <option value="32">Slot 33 (EN)</option>
+            <option value="33">Slot 34 (EN)</option>
+            <option value="34">Slot 35 (EN)</option>
+            <option value="35">Slot 36 (EN)</option>
+            <option value="36">Slot 37 (EN)</option>
+            <option value="37">Slot 38 (EN)</option>
+            <option value="38">Slot 39 (EN)</option>
+            <option value="39">Slot 40 (EN)</option>
+          </optgroup>
+          <optgroup label="RO Quick Sounds (41-60)">
+            <option value="40">Slot 41 (RO)</option>
+            <option value="41">Slot 42 (RO)</option>
+            <option value="42">Slot 43 (RO)</option>
+            <option value="43">Slot 44 (RO)</option>
+            <option value="44">Slot 45 (RO)</option>
+            <option value="45">Slot 46 (RO)</option>
+            <option value="46">Slot 47 (RO)</option>
+            <option value="47">Slot 48 (RO)</option>
+            <option value="48">Slot 49 (RO)</option>
+            <option value="49">Slot 50 (RO)</option>
+            <option value="50">Slot 51 (RO)</option>
+            <option value="51">Slot 52 (RO)</option>
+            <option value="52">Slot 53 (RO)</option>
+            <option value="53">Slot 54 (RO)</option>
+            <option value="54">Slot 55 (RO)</option>
+            <option value="55">Slot 56 (RO)</option>
+            <option value="56">Slot 57 (RO)</option>
+            <option value="57">Slot 58 (RO)</option>
+            <option value="58">Slot 59 (RO)</option>
+            <option value="59">Slot 60 (RO)</option>
+          </optgroup>
+          <optgroup label="DE Quick Sounds (61-80)">
+            <option value="60">Slot 61 (DE)</option>
+            <option value="61">Slot 62 (DE)</option>
+            <option value="62">Slot 63 (DE)</option>
+            <option value="63">Slot 64 (DE)</option>
+            <option value="64">Slot 65 (DE)</option>
+            <option value="65">Slot 66 (DE)</option>
+            <option value="66">Slot 67 (DE)</option>
+            <option value="67">Slot 68 (DE)</option>
+            <option value="68">Slot 69 (DE)</option>
+            <option value="69">Slot 70 (DE)</option>
+            <option value="70">Slot 71 (DE)</option>
+            <option value="71">Slot 72 (DE)</option>
+            <option value="72">Slot 73 (DE)</option>
+            <option value="73">Slot 74 (DE)</option>
+            <option value="74">Slot 75 (DE)</option>
+            <option value="75">Slot 76 (DE)</option>
+            <option value="76">Slot 77 (DE)</option>
+            <option value="77">Slot 78 (DE)</option>
+            <option value="78">Slot 79 (DE)</option>
+            <option value="79">Slot 80 (DE)</option>
+          </optgroup>
         </select>
         <button class="btn" onclick="generateTTSSound()" style="flex: 0 0 auto; font-size: 10px; padding: 6px 12px;">Generate & Save</button>
       </div>
       <div id="tts-sound-status" style="font-size: 9px; color: #aaa; margin-top: 4px; min-height: 14px;"></div>
     </div>
+  </div>
+
+  <!-- Left Side Panel: Language-Specific Sounds (1-10) -->
+  <div class="left-sounds-panel">
+    <div style="font-size: 9px; color: #cc3300; font-weight: bold; margin-bottom: 4px; text-align: center;">
+      Quick Sounds
+    </div>
+    
+    <!-- Language Switcher -->
+    <div style="display: flex; gap: 2px; margin-bottom: 6px;">
+      <button class="lang-switch-btn active" data-lang="en" onclick="switchSidePanelLanguage('en')" 
+              style="flex: 1; padding: 4px; font-size: 9px; border-radius: 4px;">EN</button>
+      <button class="lang-switch-btn" data-lang="ro" onclick="switchSidePanelLanguage('ro')" 
+              style="flex: 1; padding: 4px; font-size: 9px; border-radius: 4px;">RO</button>
+      <button class="lang-switch-btn" data-lang="de" onclick="switchSidePanelLanguage('de')" 
+              style="flex: 1; padding: 4px; font-size: 9px; border-radius: 4px;">DE</button>
+    </div>
+    
+    <!-- Left Side Sounds 21-30 (dynamically updated based on language) -->
+    <button class="side-sbtn" onclick="beep(20)" data-sound-id="20" data-sound-name="Sound 21">21</button>
+    <button class="side-sbtn" onclick="beep(21)" data-sound-id="21" data-sound-name="Sound 22">22</button>
+    <button class="side-sbtn" onclick="beep(22)" data-sound-id="22" data-sound-name="Sound 23">23</button>
+    <button class="side-sbtn" onclick="beep(23)" data-sound-id="23" data-sound-name="Sound 24">24</button>
+    <button class="side-sbtn" onclick="beep(24)" data-sound-id="24" data-sound-name="Sound 25">25</button>
+    <button class="side-sbtn" onclick="beep(25)" data-sound-id="25" data-sound-name="Sound 26">26</button>
+    <button class="side-sbtn" onclick="beep(26)" data-sound-id="26" data-sound-name="Sound 27">27</button>
+    <button class="side-sbtn" onclick="beep(27)" data-sound-id="27" data-sound-name="Sound 28">28</button>
+    <button class="side-sbtn" onclick="beep(28)" data-sound-id="28" data-sound-name="Sound 29">29</button>
+    <button class="side-sbtn" onclick="beep(29)" data-sound-id="29" data-sound-name="Sound 30">30</button>
   </div>
 
   <div class="panel video">
@@ -881,6 +1035,35 @@
       <span id="uptime" style="margin-left:15px;font-size:10px;opacity:0.8">Uptime: 00:00:00</span>
       <span id="auto-stream-status" style="margin-left:15px;font-size:10px;opacity:0.8">Auto-start: Enabled</span>
     </div>
+  </div>
+
+  <!-- Right Side Panel: Language-Specific Sounds (11-20) -->
+  <div class="right-sounds-panel">
+    <div style="font-size: 9px; color: #cc3300; font-weight: bold; margin-bottom: 4px; text-align: center;">
+      Quick Sounds
+    </div>
+    
+    <!-- Language Switcher (synced with left panel) -->
+    <div style="display: flex; gap: 2px; margin-bottom: 6px;">
+      <button class="lang-switch-btn active" data-lang="en" onclick="switchSidePanelLanguage('en')" 
+              style="flex: 1; padding: 4px; font-size: 9px; border-radius: 4px;">EN</button>
+      <button class="lang-switch-btn" data-lang="ro" onclick="switchSidePanelLanguage('ro')" 
+              style="flex: 1; padding: 4px; font-size: 9px; border-radius: 4px;">RO</button>
+      <button class="lang-switch-btn" data-lang="de" onclick="switchSidePanelLanguage('de')" 
+              style="flex: 1; padding: 4px; font-size: 9px; border-radius: 4px;">DE</button>
+    </div>
+    
+    <!-- Right Side Sounds 31-40 -->
+    <button class="side-sbtn" onclick="beep(30)" data-sound-id="30" data-sound-name="Sound 31">31</button>
+    <button class="side-sbtn" onclick="beep(31)" data-sound-id="31" data-sound-name="Sound 32">32</button>
+    <button class="side-sbtn" onclick="beep(32)" data-sound-id="32" data-sound-name="Sound 33">33</button>
+    <button class="side-sbtn" onclick="beep(33)" data-sound-id="33" data-sound-name="Sound 34">34</button>
+    <button class="side-sbtn" onclick="beep(34)" data-sound-id="34" data-sound-name="Sound 35">35</button>
+    <button class="side-sbtn" onclick="beep(35)" data-sound-id="35" data-sound-name="Sound 36">36</button>
+    <button class="side-sbtn" onclick="beep(36)" data-sound-id="36" data-sound-name="Sound 37">37</button>
+    <button class="side-sbtn" onclick="beep(37)" data-sound-id="37" data-sound-name="Sound 38">38</button>
+    <button class="side-sbtn" onclick="beep(38)" data-sound-id="38" data-sound-name="Sound 39">39</button>
+    <button class="side-sbtn" onclick="beep(39)" data-sound-id="39" data-sound-name="Sound 40">40</button>
   </div>
 
   <div class="panel audio">
@@ -936,6 +1119,11 @@
 document.addEventListener('DOMContentLoaded', function() {
   loadWordDatabases();
   initializeWordDatabases();
+  
+  // Initialize side panel language switcher
+  setTimeout(() => {
+    switchSidePanelLanguage('en');
+  }, 100);
 });
 // Global variables
 let lang = 'en';
@@ -3792,6 +3980,66 @@ async function generateTTSSound() {
 // Sound renaming functionality
 let soundRenameMode = false;
 let soundNames = {};
+let currentSidePanelLanguage = 'en'; // Track current language selection
+
+// Language to sound ID offset mapping
+// EN: sounds 21-40 (IDs 20-39)
+// RO: sounds 41-60 (IDs 40-59)
+// DE: sounds 61-80 (IDs 60-79)
+const languageOffsets = {
+  'en': 20,  // Start at sound21 (ID 20)
+  'ro': 40,  // Start at sound41 (ID 40)
+  'de': 60   // Start at sound61 (ID 60)
+};
+
+function switchSidePanelLanguage(lang) {
+  currentSidePanelLanguage = lang;
+  
+  // Update active state on all language buttons
+  document.querySelectorAll('.lang-switch-btn').forEach(btn => {
+    if (btn.dataset.lang === lang) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+  
+  // Update side panel buttons to point to correct sound IDs
+  const baseOffset = languageOffsets[lang];
+  
+  // Update left panel (10 buttons)
+  const leftButtons = document.querySelectorAll('.left-sounds-panel .side-sbtn');
+  leftButtons.forEach((btn, index) => {
+    const soundId = baseOffset + index;
+    btn.onclick = () => beep(soundId);
+    btn.dataset.soundId = soundId;
+    
+    // Update label if custom name exists
+    const customName = soundNames[soundId];
+    if (customName) {
+      btn.textContent = customName;
+    } else {
+      btn.textContent = soundId + 1; // Display as 21, 22, etc.
+    }
+  });
+  
+  // Update right panel (10 buttons)
+  const rightButtons = document.querySelectorAll('.right-sounds-panel .side-sbtn');
+  rightButtons.forEach((btn, index) => {
+    const soundId = baseOffset + 10 + index;
+    btn.onclick = () => beep(soundId);
+    btn.dataset.soundId = soundId;
+    
+    const customName = soundNames[soundId];
+    if (customName) {
+      btn.textContent = customName;
+    } else {
+      btn.textContent = soundId + 1;
+    }
+  });
+  
+  log(`Side panel sounds switched to ${lang.toUpperCase()}`);
+}
 
 // Load sound names from localStorage on startup
 function loadSoundNames() {
@@ -3817,7 +4065,7 @@ function saveSoundNames() {
 
 // Update all sound button labels
 function updateSoundButtonLabels() {
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 80; i++) {  // Support all 80 sounds
     const button = document.querySelector(`[data-sound-id="${i}"]`);
     if (button) {
       const customName = soundNames[i];
@@ -3843,7 +4091,7 @@ function toggleSoundRename() {
     renameBtn.style.color = '#000';
     
     // Add click handlers for renaming
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 80; i++) {  // Support all 80 sounds
       const button = document.querySelector(`[data-sound-id="${i}"]`);
       if (button) {
         button.onclick = () => renameSound(i);
@@ -3859,7 +4107,7 @@ function toggleSoundRename() {
     renameBtn.style.color = '';
     
     // Restore original click handlers
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 80; i++) {  // Support all 80 sounds
       const button = document.querySelector(`[data-sound-id="${i}"]`);
       if (button) {
         button.onclick = () => beep(i);

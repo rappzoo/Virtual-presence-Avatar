@@ -1045,13 +1045,13 @@ def generate_sound_from_tts():
         data = request.get_json()
         text = data.get('text', '').strip()
         language = data.get('language', 'en')
-        sound_id = data.get('sound_id', 0)  # 0-19 for 20 slots
+        sound_id = data.get('sound_id', 0)  # 0-79 for 80 slots
         
         if not text:
             return jsonify({"ok": False, "msg": "No text provided"})
         
-        if not 0 <= sound_id <= 19:
-            return jsonify({"ok": False, "msg": "Invalid sound ID (must be 0-19)"})
+        if not 0 <= sound_id <= 79:
+            return jsonify({"ok": False, "msg": "Invalid sound ID (must be 0-79)"})
         
         print(f"[Sound TTS] Generating sound {sound_id + 1} from text: '{text}' ({language})")
         
