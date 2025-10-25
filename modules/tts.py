@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """
 Text-to-Speech module for Avatar Tank system.
-Handles speech synthesis using Piper or fallback engines.
+Handles speech synthesis using Edge-TTS (Romanian), Piper, or fallback engines.
 """
 
 import subprocess
 import shutil
 import os
 import glob
+import asyncio
+import edge_tts
+import tempfile
+import time
+from pathlib import Path
 from modules.device_detector import SPK_PLUG
 
 
@@ -20,6 +25,13 @@ class PiperTTS:
         }
         self.current_language='en'
         self.bin, self.kind = self._find_piper_bin()
+        
+        # Edge-TTS configuration for Romanian
+        self.edge_voices = {
+            'ro': 'ro-RO-EmilNeural'  # Romanian male voice
+        }
+        self.temp_dir = Path('/tmp/edge_tts_ro')
+        self.temp_dir.mkdir(exist_ok=True)
 
     def _find_piper_bin(self):
         # prefer piper-cli, then piper
@@ -70,6 +82,41 @@ class PiperTTS:
         
         return enhanced_text
 
+    def internet_available(self):
+        """Check if internet connection is available"""
+        try:
+            import urllib.request
+            urllib.request.urlopen('http://google.com', timeout=3)
+            return True
+        except:
+            return False
+
+    async def synthesize_edge_tts(self, text, language):
+        """High-quality Edge-TTS synthesis for Romanian"""
+        if language not in self.edge_voices:
+            return None
+        
+        voice = self.edge_voices[language]
+        temp_file = self.temp_dir / f"edge_tts_{int(time.time())}.mp3"
+        
+        try:
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(str(temp_file))
+            return str(temp_file)
+        except Exception as e:
+            print(f"[TTS] Edge-TTS error: {e}")
+            return None
+
+    def play_edge_tts_audio(self, audio_file):
+        """Play Edge-TTS audio using mpg123"""
+        try:
+            result = subprocess.run(['mpg123', '-q', str(audio_file)], 
+                                  capture_output=True, timeout=30)
+            return result.returncode == 0
+        except Exception as e:
+            print(f"[TTS] Audio playback error: {e}")
+            return False
+
     def status(self):
         return {
             "ok": bool(self.bin),
@@ -86,7 +133,30 @@ class PiperTTS:
         if self.current_language not in self.languages:
             return {"ok": False, "msg": f"unsupported lang '{self.current_language}'"}
         
-        # Fix Romanian question intonation
+        # Try Edge-TTS for Romanian if internet is available
+        if self.current_language == 'ro' and self.internet_available():
+            try:
+                print(f"[TTS] Using Edge-TTS for Romanian: {text}")
+                audio_file = asyncio.run(self.synthesize_edge_tts(text, 'ro'))
+                
+                if audio_file and os.path.exists(audio_file):
+                    success = self.play_edge_tts_audio(audio_file)
+                    # Clean up temp file
+                    try:
+                        os.remove(audio_file)
+                    except:
+                        pass
+                    
+                    if success:
+                        return {"ok": True, "msg": f"Spoken with Edge-TTS ({self.languages[self.current_language]['name']})"}
+                    else:
+                        print("[TTS] Edge-TTS playback failed, falling back to Piper")
+                else:
+                    print("[TTS] Edge-TTS synthesis failed, falling back to Piper")
+            except Exception as e:
+                print(f"[TTS] Edge-TTS error: {e}, falling back to Piper")
+        
+        # Fix Romanian question intonation for Piper fallback
         is_romanian_question = self.current_language == 'ro' and text.endswith('?')
         if is_romanian_question:
             text = self._fix_romanian_question_intonation(text)
