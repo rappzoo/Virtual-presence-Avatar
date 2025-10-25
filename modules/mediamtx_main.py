@@ -1040,7 +1040,7 @@ def play_sound(sound_id):
 
 @app.route('/generate_sound_from_tts', methods=['POST'])
 def generate_sound_from_tts():
-    """Generate TTS audio and save it as a sound effect"""
+    """Generate TTS audio and save it as a sound effect using Edge-TTS for Romanian"""
     try:
         data = request.get_json()
         text = data.get('text', '').strip()
@@ -1055,17 +1055,59 @@ def generate_sound_from_tts():
         
         print(f"[Sound TTS] Generating sound {sound_id + 1} from text: '{text}' ({language})")
         
-        # Generate TTS audio
+        # Generate TTS audio using the updated TTS module
         try:
             from modules.tts import tts as tts_module
+            import asyncio
+            import edge_tts
+            from pathlib import Path
             
-            # Get the language directory and find model
+            # Check if language is supported
             if language not in tts_module.languages:
                 return jsonify({"ok": False, "msg": f"Unsupported language: {language}"})
             
-            lang_dir = tts_module.languages[language]['dir']
+            # Try Edge-TTS for Romanian if internet is available
+            if language == 'ro' and tts_module.internet_available():
+                try:
+                    print(f"[Sound TTS] Using Edge-TTS for Romanian: {text}")
+                    
+                    # Generate with Edge-TTS
+                    voice = tts_module.edge_voices['ro']
+                    temp_mp3 = f"/tmp/edge_tts_sound_{sound_id}_{int(time.time())}.mp3"
+                    
+                    communicate = edge_tts.Communicate(text, voice)
+                    asyncio.run(communicate.save(temp_mp3))
+                    
+                    if os.path.exists(temp_mp3):
+                        # Copy to sounds directory
+                        module_dir = Path(__file__).parent
+                        sound_dir = module_dir / ".." / "sounds"
+                        sound_dir.mkdir(exist_ok=True)
+                        output_mp3 = sound_dir / f"sound{sound_id + 1}.mp3"
+                        
+                        # Copy the Edge-TTS MP3 file
+                        import shutil
+                        shutil.copy2(temp_mp3, output_mp3)
+                        os.remove(temp_mp3)  # Clean up temp file
+                        
+                        print(f"[Sound TTS] Generated with Edge-TTS: {output_mp3}")
+                        return jsonify({
+                            "ok": True, 
+                            "msg": f"Sound {sound_id + 1} generated with Edge-TTS",
+                            "file": f"sound{sound_id + 1}.mp3",
+                            "text": text,
+                            "language": language
+                        })
+                    else:
+                        print("[Sound TTS] Edge-TTS generation failed, falling back to Piper")
+                        
+                except Exception as e:
+                    print(f"[Sound TTS] Edge-TTS error: {e}, falling back to Piper")
             
-            # Generate to temporary file
+            # Fallback to Piper for other languages or when Edge-TTS fails
+            print(f"[Sound TTS] Using Piper for {language}: {text}")
+            
+            lang_dir = tts_module.languages[language]['dir']
             temp_wav = "/tmp/tts_sound_gen.wav"
             
             # Use Piper to generate audio
@@ -1118,30 +1160,29 @@ def generate_sound_from_tts():
             conv_result = subprocess.run(
                 ['ffmpeg', '-y', '-i', temp_wav, '-codec:a', 'libmp3lame', '-qscale:a', '2', str(output_mp3)],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=30
             )
             
-            if conv_result.returncode != 0:
-                return jsonify({"ok": False, "msg": "MP3 conversion failed"})
-            
-            # Clean up temp file
+            # Clean up temp WAV file
             if os.path.exists(temp_wav):
-                os.unlink(temp_wav)
+                os.remove(temp_wav)
             
-            print(f"[Sound TTS] Successfully saved sound {sound_id + 1}: {output_mp3}")
+            if conv_result.returncode != 0:
+                return jsonify({"ok": False, "msg": f"Audio conversion failed: {conv_result.stderr}"})
+            
+            print(f"[Sound TTS] Generated with Piper: {output_mp3}")
             return jsonify({
                 "ok": True, 
-                "msg": f"Sound {sound_id + 1} created from TTS",
+                "msg": f"Sound {sound_id + 1} generated with Piper",
                 "file": f"sound{sound_id + 1}.mp3",
                 "text": text,
                 "language": language
             })
             
-        except ImportError as e:
-            return jsonify({"ok": False, "msg": f"TTS module not available: {e}"})
         except Exception as e:
             return jsonify({"ok": False, "msg": f"TTS generation error: {e}"})
-            
+        
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Sound generation error: {e}"})
 
