@@ -29,17 +29,25 @@ fi
 if systemctl is-enabled avatar-mediamtx.service &>/dev/null; then
     echo -e "  ${RED}❌${NC} avatar-mediamtx.service is ENABLED (SHOULD be disabled!)"
     echo -e "     ${YELLOW}→ Fix: sudo systemctl disable avatar-mediamtx.service${NC}"
+    echo -e "     ${YELLOW}→ Or: sudo rm /etc/systemd/system/avatar-mediamtx.service${NC}"
     ISSUES_FOUND=$((ISSUES_FOUND + 1))
+elif [ -f "/etc/systemd/system/avatar-mediamtx.service" ]; then
+    echo -e "  ${YELLOW}⚠${NC}  avatar-mediamtx.service file exists but is disabled"
+    echo -e "     ${YELLOW}→ Consider: sudo rm /etc/systemd/system/avatar-mediamtx.service${NC}"
 else
-    echo -e "  ${GREEN}✓${NC} avatar-mediamtx.service is disabled (correct)"
+    echo -e "  ${GREEN}✓${NC} avatar-mediamtx.service is removed/disabled (correct)"
 fi
 
 if systemctl is-enabled mediamtx.service &>/dev/null; then
     echo -e "  ${RED}❌${NC} mediamtx.service is ENABLED (SHOULD be disabled!)"
     echo -e "     ${YELLOW}→ Fix: sudo systemctl disable mediamtx.service${NC}"
+    echo -e "     ${YELLOW}→ Or: sudo rm /etc/systemd/system/mediamtx.service${NC}"
     ISSUES_FOUND=$((ISSUES_FOUND + 1))
+elif [ -f "/etc/systemd/system/mediamtx.service" ]; then
+    echo -e "  ${YELLOW}⚠${NC}  mediamtx.service file exists but is disabled"
+    echo -e "     ${YELLOW}→ Consider: sudo rm /etc/systemd/system/mediamtx.service${NC}"
 else
-    echo -e "  ${GREEN}✓${NC} mediamtx.service is disabled (correct)"
+    echo -e "  ${GREEN}✓${NC} mediamtx.service is removed/disabled (correct)"
 fi
 
 echo ""
