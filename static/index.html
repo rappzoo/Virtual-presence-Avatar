@@ -1348,15 +1348,17 @@ function selectPrediction(index) {
   const beforeWord = beforeMatch ? beforeMatch[1] : '';
   const afterWord = afterMatch ? afterMatch[1] : '';
   
-  // Replace the current word with the selected prediction
-  const newText = beforeCursor.substring(0, beforeCursor.length - beforeWord.length) + 
-                  pill.textContent + ' ' + 
-                  afterCursor.substring(afterWord.length);
+  // Insert the selected prediction at the current cursor position
+  // First, clear any partial word after the cursor by removing it
+  const textBeforeWord = beforeCursor.substring(0, beforeCursor.length - beforeWord.length);
+  const textAfterWord = afterCursor.substring(afterWord.length);
+  
+  const newText = textBeforeWord + pill.textContent + ' ' + textAfterWord;
   
   input.value = newText;
   
   // Position cursor after the completed word and space
-  const newCursorPos = beforeCursor.length - beforeWord.length + pill.textContent.length + 1;
+  const newCursorPos = textBeforeWord.length + pill.textContent.length + 1;
   input.setSelectionRange(newCursorPos, newCursorPos);
   input.focus();
   
@@ -2495,7 +2497,7 @@ async function predictText(query) {
     return;
   }
   
-  predictionTimeout = setTimeout(() => {
+  predictionTimeout = setTimeout(async () => {
     try {
       const input = sid('tts');
       if (!input) return;
@@ -2518,8 +2520,25 @@ async function predictText(query) {
       const beforeWordMatch = beforeCursor.match(/(\S+)\s*$/);
       const previousWord = beforeWordMatch ? beforeWordMatch[1] : '';
       
-      // Get suggestions for current word
-      const suggestions = getWordSuggestions(currentWord, lang, previousWord);
+      // Get client-side suggestions for current word
+      let suggestions = getWordSuggestions(currentWord, lang, previousWord);
+      
+      // Also get server-based predictions if we have text to predict
+      if (currentWord.length > 0) {
+        try {
+          const response = await fetch(`/predict?q=${encodeURIComponent(currentWord)}&lang=${lang}&limit=4`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.ok && data.items && data.items.length > 0) {
+              // Merge server suggestions with client suggestions
+              const serverSuggestions = data.items.filter(item => typeof item === 'string');
+              suggestions = [...new Set([...serverSuggestions, ...suggestions])].slice(0, 4);
+            }
+          }
+        } catch (e) {
+          console.log('[Predict] Server prediction error:', e);
+        }
+      }
       
       // Update the 4 prediction pills
       updatePredictionPills(suggestions);
