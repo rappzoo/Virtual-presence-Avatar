@@ -1286,10 +1286,50 @@ function learnFromSpokenText(text, language) {
   saveWordDatabases();
 }
 
+// Get context-based suggestions for next word (when starting a new word after space)
+function getContextBasedSuggestions(previousWord, language) {
+  if (!previousWord) return [];
+  
+  const suggestions = [];
+  const prevLower = previousWord.toLowerCase();
+  
+  console.log('[GetContextSuggestions] Looking for words after:', prevLower);
+  
+  // Look for word pairs in context database
+  if (contextDatabase[language] && contextDatabase[language].size > 0) {
+    const contextCandidates = [];
+    contextDatabase[language].forEach((count, context) => {
+      if (context.startsWith(prevLower + ' ')) {
+        const nextWord = context.split(' ')[1];
+        if (nextWord) {
+          contextCandidates.push({ word: nextWord, count });
+        }
+      }
+    });
+    
+    // Sort by frequency
+    contextCandidates.sort((a, b) => b.count - a.count);
+    const contextWords = contextCandidates.slice(0, 4).map(c => c.word);
+    suggestions.push(...contextWords);
+    
+    console.log('[GetContextSuggestions] Found context suggestions:', contextWords);
+  }
+  
+  // If we don't have enough, add common words
+  if (suggestions.length < 4 && commonWords[language]) {
+    const commonList = commonWords[language].slice(0, 4 - suggestions.length);
+    suggestions.push(...commonList);
+  }
+  
+  return [...new Set(suggestions)].slice(0, 4);
+}
+
 // Get word suggestions based on current input
 function getWordSuggestions(partialWord, language, previousWord = '') {
   const suggestions = [];
   const partial = partialWord.toLowerCase();
+  
+  console.log('[GetWordSuggestions] Partial:', partial, 'Previous:', previousWord);
   
   // Get all words that start with the partial input
   const candidates = [];
@@ -1302,6 +1342,8 @@ function getWordSuggestions(partialWord, language, previousWord = '') {
   // Sort by frequency and take top 4
   candidates.sort((a, b) => b.count - a.count);
   const topWords = candidates.slice(0, 4).map(c => c.word);
+  
+  console.log('[GetWordSuggestions] Top words from frequency:', topWords);
   
   // If we have a previous word, boost context-based suggestions
   if (previousWord && contextDatabase[language].size > 0) {
@@ -1318,7 +1360,9 @@ function getWordSuggestions(partialWord, language, previousWord = '') {
     contextCandidates.sort((a, b) => b.count - a.count);
     const contextWords = contextCandidates.slice(0, 2).map(c => c.word);
     
-    // Merge and deduplicate
+    console.log('[GetWordSuggestions] Context-based words:', contextWords);
+    
+    // Merge and deduplicate - prioritize context words
     const merged = [...new Set([...contextWords, ...topWords])];
     return merged.slice(0, 4);
   }
@@ -1334,38 +1378,54 @@ function selectPrediction(index) {
   const pill = sid(`pred${index}`);
   if (!pill || !pill.textContent) return;
   
+  const selectedWord = pill.textContent;
   const text = input.value;
   const cursorPos = input.selectionStart;
+  
+  console.log('[SelectPrediction] Before:', text, 'Cursor:', cursorPos, 'Selected:', selectedWord);
   
   // Find the current word being typed
   const beforeCursor = text.substring(0, cursorPos);
   const afterCursor = text.substring(cursorPos);
   
-  // Find word boundaries
+  // Find word boundaries - match the partial word being typed
   const beforeMatch = beforeCursor.match(/(\S*)$/);
   const afterMatch = afterCursor.match(/^(\S*)/);
   
-  const beforeWord = beforeMatch ? beforeMatch[1] : '';
-  const afterWord = afterMatch ? afterMatch[1] : '';
+  const partialBefore = beforeMatch ? beforeMatch[1] : '';
+  const partialAfter = afterMatch ? afterMatch[1] : '';
   
-  // Insert the selected prediction at the current cursor position
-  // First, clear any partial word after the cursor by removing it
-  const textBeforeWord = beforeCursor.substring(0, beforeCursor.length - beforeWord.length);
-  const textAfterWord = afterCursor.substring(afterWord.length);
+  console.log('[SelectPrediction] Partial before:', partialBefore, 'Partial after:', partialAfter);
   
-  const newText = textBeforeWord + pill.textContent + ' ' + textAfterWord;
+  // Remove the partial word and insert the complete word
+  const textBeforeWord = beforeCursor.substring(0, beforeCursor.length - partialBefore.length);
+  const textAfterWord = afterCursor.substring(partialAfter.length);
+  
+  const newText = textBeforeWord + selectedWord + ' ' + textAfterWord;
   
   input.value = newText;
   
   // Position cursor after the completed word and space
-  const newCursorPos = textBeforeWord.length + pill.textContent.length + 1;
+  const newCursorPos = textBeforeWord.length + selectedWord.length + 1;
   input.setSelectionRange(newCursorPos, newCursorPos);
   input.focus();
   
-  // Generate new predictions for the next word
+  console.log('[SelectPrediction] After:', newText, 'New cursor:', newCursorPos);
+  
+  // Learn the selected word
+  learnFromSpokenText(selectedWord, lang);
+  updateWordContext(newText);
+  
+  // Hide predictions briefly, then show new ones for next word
+  const predictionsEl = sid('predictions');
+  if (predictionsEl) predictionsEl.style.display = 'none';
+  
+  // Generate new predictions for the next word after a brief delay
   setTimeout(() => {
+    console.log('[SelectPrediction] Triggering next word prediction');
+    // Trigger prediction with empty partial to get context-based suggestions
     predictText(input.value);
-  }, 10);
+  }, 50);
 }
 
 // Update prediction pills
@@ -2505,26 +2565,48 @@ async function predictText(query) {
       const fullText = input.value;
       const cursorPos = input.selectionStart;
       
+      console.log('[PredictText] Full text:', fullText, 'Cursor:', cursorPos);
+      
       // Find the current word being typed
       const beforeCursor = fullText.substring(0, cursorPos);
       const afterCursor = fullText.substring(cursorPos);
       
-      // Find word boundaries
+      // Find word boundaries - the partial word at cursor
       const beforeMatch = beforeCursor.match(/(\S*)$/);
       const afterMatch = afterCursor.match(/^(\S*)/);
       
       const currentWord = beforeMatch ? beforeMatch[1] : '';
       const afterWord = afterMatch ? afterMatch[1] : '';
       
+      console.log('[PredictText] Current word:', currentWord);
+      
       // Get previous word for context
-      const beforeWordMatch = beforeCursor.match(/(\S+)\s*$/);
-      const previousWord = beforeWordMatch ? beforeWordMatch[1] : '';
+      // Match the last complete word BEFORE the current partial word
+      const words = beforeCursor.trim().split(/\s+/);
+      let previousWord = '';
+      if (words.length > 1) {
+        // If we're typing a new word (currentWord exists), previous is second to last
+        // If we just added a space (currentWord is empty), previous is last word
+        previousWord = currentWord ? words[words.length - 2] : words[words.length - 1];
+      }
       
-      // Get client-side suggestions for current word
-      let suggestions = getWordSuggestions(currentWord, lang, previousWord);
+      console.log('[PredictText] Previous word:', previousWord);
       
-      // Also get server-based predictions if we have text to predict
-      if (currentWord.length > 0) {
+      // If cursor is after a space and we're not typing anything, predict next word based on context
+      const isStartingNewWord = beforeCursor.endsWith(' ') && !currentWord;
+      
+      let suggestions = [];
+      
+      if (isStartingNewWord) {
+        console.log('[PredictText] Starting new word, using context-based prediction');
+        // Get context-based suggestions for next word
+        suggestions = getContextBasedSuggestions(previousWord, lang);
+      } else if (currentWord.length > 0) {
+        console.log('[PredictText] Typing word, using partial match prediction');
+        // Get client-side suggestions for current partial word
+        suggestions = getWordSuggestions(currentWord, lang, previousWord);
+        
+        // Also get server-based predictions
         try {
           const response = await fetch(`/predict?q=${encodeURIComponent(currentWord)}&lang=${lang}&limit=4`);
           if (response.ok) {
@@ -2539,6 +2621,8 @@ async function predictText(query) {
           console.log('[Predict] Server prediction error:', e);
         }
       }
+      
+      console.log('[PredictText] Final suggestions:', suggestions);
       
       // Update the 4 prediction pills
       updatePredictionPills(suggestions);
@@ -2560,21 +2644,31 @@ function handleTTSKeydown(event) {
     if (predictions) predictions.style.display = 'none';
   }
   if (event.key === ' ') {
-    // Spacebar pressed - trigger next word prediction after space is added
+    // Spacebar pressed - learn the just-completed word and trigger next word prediction
     setTimeout(() => {
       const input = event.target;
       const currentText = input.value; // Don't trim - we need to check for trailing space
       
       console.log('[Spacebar] Current text:', currentText, 'Ends with space:', currentText.endsWith(' '));
       
-      // Only predict if there's text and the last character is a space
+      // Only process if there's text and the last character is a space
       if (currentText.length > 0 && currentText.endsWith(' ')) {
+        // Extract the just-completed word
+        const words = currentText.trim().split(/\s+/);
+        const lastWord = words[words.length - 1];
+        
+        if (lastWord && lastWord.length > 1) {
+          console.log('[Spacebar] Learning completed word:', lastWord);
+          // Learn the word
+          learnFromSpokenText(lastWord, lang);
+        }
+        
         console.log('[Spacebar] Triggering next word prediction');
         // Update context with the current text
         updateWordContext(currentText);
         
         // Trigger next word prediction
-        predictNextWord();
+        predictText(currentText);
       } else {
         console.log('[Spacebar] Not triggering prediction - no text or no trailing space');
       }
