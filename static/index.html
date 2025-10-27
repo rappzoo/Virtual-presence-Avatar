@@ -4163,6 +4163,8 @@ function switchSidePanelLanguage(lang) {
   const leftButtons = document.querySelectorAll('.left-sounds-panel .side-sbtn');
   leftButtons.forEach((btn, index) => {
     const soundId = baseOffset + index;
+    // Remove inline onclick to prevent conflicts
+    btn.removeAttribute('onclick');
     btn.onclick = () => beep(soundId);
     btn.dataset.soundId = soundId;
     
@@ -4179,6 +4181,8 @@ function switchSidePanelLanguage(lang) {
   const rightButtons = document.querySelectorAll('.right-sounds-panel .side-sbtn');
   rightButtons.forEach((btn, index) => {
     const soundId = baseOffset + 15 + index;
+    // Remove inline onclick to prevent conflicts
+    btn.removeAttribute('onclick');
     btn.onclick = () => beep(soundId);
     btn.dataset.soundId = soundId;
     
