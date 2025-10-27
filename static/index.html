@@ -4247,7 +4247,7 @@ function toggleSoundRename() {
     renameBtn.style.color = '#000';
     
     // Add click handlers for renaming
-    for (let i = 0; i < 80; i++) {  // Support all 80 sounds
+    for (let i = 0; i < 110; i++) {  // Support all 110 sounds
       const button = document.querySelector(`[data-sound-id="${i}"]`);
       if (button) {
         // Remove inline onclick attribute and set new handler
@@ -4265,7 +4265,7 @@ function toggleSoundRename() {
     renameBtn.style.color = '';
     
     // Restore original click handlers
-    for (let i = 0; i < 80; i++) {  // Support all 80 sounds
+    for (let i = 0; i < 110; i++) {  // Support all 110 sounds
       const button = document.querySelector(`[data-sound-id="${i}"]`);
       if (button) {
         // Restore inline onclick attribute
