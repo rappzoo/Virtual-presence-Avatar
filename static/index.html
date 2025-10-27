@@ -759,12 +759,16 @@
       border: 2px solid #cc3300;
       border-radius: 6px;
       padding: 8px;
-      font-size: 10px;
+      font-size: 20px;
       overflow-y: auto;
-      height: 65px;
-      line-height: 1.3;
+      overflow-x: hidden;
+      height: 130px;
+      line-height: 1.4;
       font-family: 'Courier New', monospace;
       color: #cccccc;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      display: block;
     }
     
     h3 {
@@ -1010,8 +1014,8 @@
       </div>
     </div>
     
-    <!-- Expanded log panel (shows ~5 lines) -->
-    <div id="log" class="panel log" style="margin-top:8px;height:65px;overflow-y:auto;font-size:10px;line-height:1.3">Avatar Tank System Ready</div>
+    <!-- Expanded log panel (shows ~5 lines with double size) -->
+    <div id="log" class="panel log" style="margin-top:8px;"></div>
     
     <!-- Closing design line -->
     <div style="height: 1px; background: linear-gradient(90deg, transparent, #cc3300, transparent); margin: 8px 0;"></div>
@@ -1559,7 +1563,22 @@ let webrtcPlayer = null;
 const sid = (id) => document.getElementById(id);
 const log = (m) => {
   const logEl = sid('log');
-  if (logEl) logEl.textContent = '[' + new Date().toLocaleTimeString() + '] ' + m;
+  if (logEl) {
+    const timestamp = '[' + new Date().toLocaleTimeString() + '] ';
+    const logLine = timestamp + m + '\n';
+    
+    // Append the new log line
+    logEl.textContent += logLine;
+    
+    // Auto-scroll to bottom to show latest logs
+    logEl.scrollTop = logEl.scrollHeight;
+    
+    // Optional: Keep only last 50 lines to prevent memory issues
+    const lines = logEl.textContent.split('\n');
+    if (lines.length > 50) {
+      logEl.textContent = lines.slice(-50).join('\n');
+    }
+  }
   console.log('[Frontend]', m);
 };
 
