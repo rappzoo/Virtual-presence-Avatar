@@ -784,6 +784,39 @@
     <div style="display:flex;gap:10px;align-items:center;flex:1">
       <input id="tts" placeholder="Type message to speak..." oninput="predictText(this.value)" onkeydown="handleTTSKeydown(event)" style="flex:1" />
       <button class="btn" onclick="clearText()" title="Clear text">×</button>
+      <select id="tts-quick-slot" style="padding:4px 6px;font-size:10px;background:rgba(0,0,0,0.3);border:1px solid #555;border-radius:4px;color:#fff;cursor:pointer;" title="Select slot to generate sound">
+        <optgroup label="Main (1-20)">
+          <option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option><option value="4">5</option>
+          <option value="5">6</option><option value="6">7</option><option value="7">8</option><option value="8">9</option><option value="9">10</option>
+          <option value="10">11</option><option value="11">12</option><option value="12">13</option><option value="13">14</option><option value="14">15</option>
+          <option value="15">16</option><option value="16">17</option><option value="17">18</option><option value="18">19</option><option value="19">20</option>
+        </optgroup>
+        <optgroup label="EN (21-50)">
+          <option value="20">21</option><option value="21">22</option><option value="22">23</option><option value="23">24</option><option value="24">25</option>
+          <option value="25">26</option><option value="26">27</option><option value="27">28</option><option value="28">29</option><option value="29">30</option>
+          <option value="30">31</option><option value="31">32</option><option value="32">33</option><option value="33">34</option><option value="34">35</option>
+          <option value="35">36</option><option value="36">37</option><option value="37">38</option><option value="38">39</option><option value="39">40</option>
+          <option value="40">41</option><option value="41">42</option><option value="42">43</option><option value="43">44</option><option value="44">45</option>
+          <option value="45">46</option><option value="46">47</option><option value="47">48</option><option value="48">49</option><option value="49">50</option>
+        </optgroup>
+        <optgroup label="RO (51-80)">
+          <option value="50">51</option><option value="51">52</option><option value="52">53</option><option value="53">54</option><option value="54">55</option>
+          <option value="55">56</option><option value="56">57</option><option value="57">58</option><option value="58">59</option><option value="59">60</option>
+          <option value="60">61</option><option value="61">62</option><option value="62">63</option><option value="63">64</option><option value="64">65</option>
+          <option value="65">66</option><option value="66">67</option><option value="67">68</option><option value="68">69</option><option value="69">70</option>
+          <option value="70">71</option><option value="71">72</option><option value="72">73</option><option value="73">74</option><option value="74">75</option>
+          <option value="75">76</option><option value="76">77</option><option value="77">78</option><option value="78">79</option><option value="79">80</option>
+        </optgroup>
+        <optgroup label="DE (81-110)">
+          <option value="80">81</option><option value="81">82</option><option value="82">83</option><option value="83">84</option><option value="84">85</option>
+          <option value="85">86</option><option value="86">87</option><option value="87">88</option><option value="88">89</option><option value="89">90</option>
+          <option value="90">91</option><option value="91">92</option><option value="92">93</option><option value="93">94</option><option value="94">95</option>
+          <option value="95">96</option><option value="96">97</option><option value="97">98</option><option value="98">99</option><option value="99">100</option>
+          <option value="100">101</option><option value="101">102</option><option value="102">103</option><option value="103">104</option><option value="104">105</option>
+          <option value="105">106</option><option value="106">107</option><option value="107">108</option><option value="108">109</option><option value="109">110</option>
+        </optgroup>
+      </select>
+      <button class="btn" onclick="generateQuickSound()" title="Generate sound from text" style="padding:4px 10px;font-weight:bold;font-size:12px;">G</button>
     </div>
     <button class="btn btn-orange" onclick="speak()">Speak</button>
     <div class="lang">
@@ -4083,7 +4116,55 @@ async function beep(soundId) {
   }
 }
 
-// Generate TTS sound and save to slot
+// Generate sound from TTS bar (quick generation)
+async function generateQuickSound() {
+  const textInput = sid('tts');
+  const slotSelect = sid('tts-quick-slot');
+  
+  const text = textInput.value.trim();
+  const soundId = parseInt(slotSelect.value);
+  
+  if (!text) {
+    log('❌ Please enter text to generate sound');
+    return;
+  }
+  
+  log(`⏳ Generating sound ${soundId + 1} from TTS...`);
+  
+  try {
+    const language = lang || 'en'; // Use current TTS language
+    
+    const response = await fetch('/generate_sound_from_tts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        text: text,
+        language: language,
+        sound_id: soundId
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.ok) {
+      log(`✅ ${result.msg}`);
+      
+      // Update the button label if it's visible and has custom names
+      updateSoundButtonLabels();
+      
+      // Optionally play the generated sound
+      setTimeout(() => {
+        beep(soundId);
+      }, 500);
+    } else {
+      log(`❌ Sound generation failed: ${result.msg}`);
+    }
+  } catch (error) {
+    log(`❌ Error generating sound: ${error.message}`);
+  }
+}
+
+// Generate TTS sound and save to slot (from motor panel)
 async function generateTTSSound() {
   const textInput = sid('tts-sound-text');
   const slotSelect = sid('tts-sound-slot');
