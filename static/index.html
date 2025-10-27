@@ -2940,20 +2940,32 @@ async function mcmd(dir, speed) {
   const led = sid('mled');
   if (led) led.className = 'led warn';
   
+  // Add timeout to prevent hanging when ESP is not connected
+  const controller = new AbortController();
+  let timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout
+  
   try {
     const response = await fetch('/motor/' + dir, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({speed: parseInt(speed)})
+      body: JSON.stringify({speed: parseInt(speed)}),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
+    
     const result = await response.json();
     
     if (led) {
       led.className = 'led ' + (result.ok ? 'ok' : 'err');
     }
   } catch (e) {
+    clearTimeout(timeoutId);
     const led = sid('mled');
     if (led) led.className = 'led err';
+    // Silently handle timeout/fetch errors - ESP might not be connected yet
+    if (e.name === 'AbortError') {
+      console.log('[Motor] Command timeout - ESP may not be connected');
+    }
   }
 }
 
@@ -4234,6 +4246,8 @@ function toggleSoundRename() {
     for (let i = 0; i < 80; i++) {  // Support all 80 sounds
       const button = document.querySelector(`[data-sound-id="${i}"]`);
       if (button) {
+        // Remove inline onclick attribute and set new handler
+        button.removeAttribute('onclick');
         button.onclick = () => renameSound(i);
         button.style.cursor = 'pointer';
         button.title = 'Click to rename this sound';
@@ -4250,7 +4264,8 @@ function toggleSoundRename() {
     for (let i = 0; i < 80; i++) {  // Support all 80 sounds
       const button = document.querySelector(`[data-sound-id="${i}"]`);
       if (button) {
-        button.onclick = () => beep(i);
+        // Restore inline onclick attribute
+        button.setAttribute('onclick', `beep(${i})`);
         button.style.cursor = '';
         button.title = '';
       }
