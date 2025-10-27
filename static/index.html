@@ -193,6 +193,7 @@
   </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Audiowide&display=swap');
     
     * {
       box-sizing: border-box;
@@ -718,6 +719,31 @@
       font-weight: bold;
     }
     
+    /* Seven-segment style uptime display */
+    .uptime-display {
+      font-family: 'Audiowide', 'Orbitron', monospace;
+      font-size: 16px;
+      font-weight: bold;
+      color: #ff0000;
+      text-align: center;
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid #ff0000;
+      border-radius: 6px;
+      letter-spacing: 3px;
+      text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000;
+      margin: 10px 0;
+    }
+    
+    .uptime-label {
+      font-size: 8px;
+      color: #ff0000;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.8;
+      margin-bottom: 2px;
+    }
+    
     .log {
       grid-area: log;
       background: rgba(0, 0, 0, 0.9);
@@ -882,6 +908,12 @@
       <button class="sbtn" onclick="beep(17)" data-sound-id="17" data-sound-name="Sound 18">18</button>
       <button class="sbtn" onclick="beep(18)" data-sound-id="18" data-sound-name="Sound 19">19</button>
       <button class="sbtn" onclick="beep(19)" data-sound-id="19" data-sound-name="Sound 20">20</button>
+    </div>
+    
+    <!-- Uptime display (seven-segment style) -->
+    <div style="margin-top: 10px;">
+      <div class="uptime-label">UPTIME</div>
+      <div id="uptime" class="uptime-display">00:00:00</div>
     </div>
     
     <!-- Closing design line -->
@@ -1674,7 +1706,8 @@ function updateDateTime() {
     const hours = Math.floor(uptime / 3600000);
     const minutes = Math.floor((uptime % 3600000) / 60000);
     const seconds = Math.floor((uptime % 60000) / 1000);
-    uptimeEl.textContent = 'Uptime: ' + 
+    // Seven-segment style display (just the time, label is separate)
+    uptimeEl.textContent = 
       hours.toString().padStart(2,'0') + ':' + 
       minutes.toString().padStart(2,'0') + ':' + 
       seconds.toString().padStart(2,'0');
