@@ -1045,13 +1045,13 @@ def generate_sound_from_tts():
         data = request.get_json()
         text = data.get('text', '').strip()
         language = data.get('language', 'en')
-        sound_id = data.get('sound_id', 0)  # 0-79 for 80 slots
+        sound_id = data.get('sound_id', 0)  # 0-109 for 110 slots
         
         if not text:
             return jsonify({"ok": False, "msg": "No text provided"})
         
-        if not 0 <= sound_id <= 79:
-            return jsonify({"ok": False, "msg": "Invalid sound ID (must be 0-79)"})
+        if not 0 <= sound_id <= 109:
+            return jsonify({"ok": False, "msg": "Invalid sound ID (must be 0-109)"})
         
         print(f"[Sound TTS] Generating sound {sound_id + 1} from text: '{text}' ({language})")
         
@@ -1066,14 +1066,15 @@ def generate_sound_from_tts():
             if language not in tts_module.languages:
                 return jsonify({"ok": False, "msg": f"Unsupported language: {language}"})
             
-            # Try Edge-TTS for Romanian if internet is available
-            if language == 'ro' and tts_module.internet_available():
+            # Try Edge-TTS for all supported languages if internet is available
+            if language in tts_module.edge_voices and tts_module.internet_available():
                 try:
-                    print(f"[Sound TTS] Using Edge-TTS for Romanian: {text}")
+                    lang_name = tts_module.languages[language]['name']
+                    print(f"[Sound TTS] Using Edge-TTS for {lang_name}: {text}")
                     
                     # Generate with Edge-TTS
-                    voice = tts_module.edge_voices['ro']
-                    temp_mp3 = f"/tmp/edge_tts_sound_{sound_id}_{int(time.time())}.mp3"
+                    voice = tts_module.edge_voices[language]
+                    temp_mp3 = f"/tmp/edge_tts_sound_{language}_{sound_id}_{int(time.time())}.mp3"
                     
                     communicate = edge_tts.Communicate(text, voice)
                     asyncio.run(communicate.save(temp_mp3))
@@ -1090,10 +1091,10 @@ def generate_sound_from_tts():
                         shutil.copy2(temp_mp3, output_mp3)
                         os.remove(temp_mp3)  # Clean up temp file
                         
-                        print(f"[Sound TTS] Generated with Edge-TTS: {output_mp3}")
+                        print(f"[Sound TTS] Generated with Edge-TTS ({lang_name}): {output_mp3}")
                         return jsonify({
                             "ok": True, 
-                            "msg": f"Sound {sound_id + 1} generated with Edge-TTS",
+                            "msg": f"Sound {sound_id + 1} generated with Edge-TTS ({lang_name})",
                             "file": f"sound{sound_id + 1}.mp3",
                             "text": text,
                             "language": language

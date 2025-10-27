@@ -25,23 +25,23 @@ const enSoundNames = {
 };
 
 // Get existing sound names from localStorage or create new object
-let soundNames = {};
+let existingSoundNames = {};
 try {
   const saved = localStorage.getItem('avatarSoundNames');
   if (saved) {
-    soundNames = JSON.parse(saved);
+    existingSoundNames = JSON.parse(saved);
   }
 } catch (e) {
   console.log('Starting fresh sound names');
 }
 
 // Add EN sound names
-Object.assign(soundNames, enSoundNames);
+Object.assign(existingSoundNames, enSoundNames);
 
 // Save to localStorage
-localStorage.setItem('avatarSoundNames', JSON.stringify(soundNames));
+localStorage.setItem('avatarSoundNames', JSON.stringify(existingSoundNames));
 
 console.log('✅ EN sound names saved!');
 console.log('Refresh the page to see the new labels.');
-console.log('Total sounds named:', Object.keys(soundNames).length);
+console.log('Total sounds named:', Object.keys(existingSoundNames).length);
 

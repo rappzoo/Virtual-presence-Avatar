@@ -26,11 +26,13 @@ class PiperTTS:
         self.current_language='en'
         self.bin, self.kind = self._find_piper_bin()
         
-        # Edge-TTS configuration for Romanian
+        # Edge-TTS configuration for all languages (male voices)
         self.edge_voices = {
-            'ro': 'ro-RO-EmilNeural'  # Romanian male voice
+            'en': 'en-US-GuyNeural',     # English male voice (US)
+            'ro': 'ro-RO-EmilNeural',    # Romanian male voice
+            'de': 'de-DE-ConradNeural'   # German male voice
         }
-        self.temp_dir = Path('/tmp/edge_tts_ro')
+        self.temp_dir = Path('/tmp/edge_tts_audio')
         self.temp_dir.mkdir(exist_ok=True)
 
     def _find_piper_bin(self):
@@ -92,12 +94,12 @@ class PiperTTS:
             return False
 
     async def synthesize_edge_tts(self, text, language):
-        """High-quality Edge-TTS synthesis for Romanian"""
+        """High-quality Edge-TTS synthesis for all supported languages"""
         if language not in self.edge_voices:
             return None
         
         voice = self.edge_voices[language]
-        temp_file = self.temp_dir / f"edge_tts_{int(time.time())}.mp3"
+        temp_file = self.temp_dir / f"edge_tts_{language}_{int(time.time())}.mp3"
         
         try:
             communicate = edge_tts.Communicate(text, voice)
@@ -133,11 +135,12 @@ class PiperTTS:
         if self.current_language not in self.languages:
             return {"ok": False, "msg": f"unsupported lang '{self.current_language}'"}
         
-        # Try Edge-TTS for Romanian if internet is available
-        if self.current_language == 'ro' and self.internet_available():
+        # Try Edge-TTS for all supported languages if internet is available
+        if self.current_language in self.edge_voices and self.internet_available():
             try:
-                print(f"[TTS] Using Edge-TTS for Romanian: {text}")
-                audio_file = asyncio.run(self.synthesize_edge_tts(text, 'ro'))
+                lang_name = self.languages[self.current_language]['name']
+                print(f"[TTS] Using Edge-TTS for {lang_name}: {text}")
+                audio_file = asyncio.run(self.synthesize_edge_tts(text, self.current_language))
                 
                 if audio_file and os.path.exists(audio_file):
                     success = self.play_edge_tts_audio(audio_file)
@@ -148,7 +151,7 @@ class PiperTTS:
                         pass
                     
                     if success:
-                        return {"ok": True, "msg": f"Spoken with Edge-TTS ({self.languages[self.current_language]['name']})"}
+                        return {"ok": True, "msg": f"Spoken with Edge-TTS ({lang_name})"}
                     else:
                         print("[TTS] Edge-TTS playback failed, falling back to Piper")
                 else:
