@@ -11,9 +11,19 @@ import time
 import threading
 import subprocess
 import datetime
+import re
+import queue
 from pathlib import Path
 from flask import Flask, Response, request, jsonify, send_file, render_template_string
 from flask_socketio import SocketIO, emit
+try:
+    # Optional: aiortc for WebRTC (playback path first)
+    import asyncio
+    from aiortc import RTCPeerConnection, RTCSessionDescription
+    from aiortc.contrib.media import MediaPlayer
+    AIORTC_AVAILABLE = True
+except Exception:
+    AIORTC_AVAILABLE = False
 import eventlet
 eventlet.monkey_patch()
 
@@ -64,6 +74,15 @@ try:
     print("[MediaMTX Main] ✓ MediaMTX Recorder module loaded")
 except ImportError as e:
     print(f"[MediaMTX Main] ✗ MediaMTX Recorder module failed: {e}")
+
+# Wi-Fi manager (optional)
+try:
+    from modules.wifi_manager import get_wifi_manager
+    wifi_manager = get_wifi_manager(str(Path('/home/havatar/Avatar-robot/config')))
+    print("[MediaMTX Main] ✓ Wi-Fi manager initialized")
+except Exception as e:
+    wifi_manager = None
+    print(f"[MediaMTX Main] ✗ Wi-Fi manager not available: {e}")
 
 # Create Flask app
 app = Flask(__name__)
@@ -337,7 +356,7 @@ def create_templates():
             </div>
             <div class="control-group">
                 <label for="framerate">Framerate:</label>
-                <input type="range" id="framerate" min="10" max="25" value="10" onchange="setFramerate()">
+                <input type="range" id="framerate" min="10" max="30" value="20" onchange="setFramerate()">
                 <span id="fps-display">10 fps</span>
             </div>
         </div>
@@ -675,7 +694,174 @@ def create_templates():
 @app.route('/')
 def index():
     """Main control interface"""
-    return send_file('../static/index.html')
+    # Use absolute path to avoid issues with working directory
+    static_file = os.path.join(parent_dir, 'static', 'index.html')
+    return send_file(static_file)
+
+# ============== WebRTC Signaling (Non-breaking, optional) ==============
+
+webrtc_peers = {}
+
+def _webrtc_build_player():
+    """Create a MediaPlayer for the existing RTSP stream to feed WebRTC."""
+    if not AIORTC_AVAILABLE:
+        return None
+    # Keep using the local RTSP published by FFmpeg/MediaMTX; prefer TCP for reliability
+    url = 'rtsp://127.0.0.1:8554/stream'
+    options = {
+        'rtsp_transport': 'tcp',
+        'stimeout': '2000000'
+    }
+    return MediaPlayer(url, format='rtsp', options=options)
+
+@app.route('/api/webrtc/offer', methods=['POST'])
+def webrtc_offer():
+    """Accept a WebRTC SDP offer and return an answer.
+    UI is unchanged; this endpoint is additive and can be used by the page without altering controls.
+    """
+    if not AIORTC_AVAILABLE:
+        return jsonify({'ok': False, 'message': 'WebRTC unavailable: aiortc not installed'}), 501
+
+    data = request.get_json(silent=True) or {}
+    sdp = data.get('sdp')
+    sdp_type = data.get('type', 'offer')
+    mode = data.get('mode', 'play')  # 'play' streams camera+mic to browser; future: 'talkback'
+    if not sdp:
+        return jsonify({'ok': False, 'message': 'Missing SDP'}), 400
+
+    async def _handle():
+        pc = RTCPeerConnection()
+        # Store ref by id for future trickle/cleanup if needed
+        pc_id = id(pc)
+        webrtc_peers[pc_id] = pc
+
+        @pc.on('track')
+        def on_track(track):
+            # Placeholder to accept inbound tracks without playback for now
+            return
+
+        # Add outbound media from existing RTSP stream
+        if mode in ('play', 'both'):
+            player = _webrtc_build_player()
+            if player:
+                if getattr(player, 'video', None):
+                    pc.addTrack(player.video)
+                if getattr(player, 'audio', None):
+                    pc.addTrack(player.audio)
+
+        offer = RTCSessionDescription(sdp=sdp, type=sdp_type)
+        await pc.setRemoteDescription(offer)
+
+        answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+
+        return {
+            'ok': True,
+            'sdp': pc.localDescription.sdp,
+            'type': pc.localDescription.type,
+            'peer_id': pc_id,
+        }
+
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(_handle())
+        loop.close()
+        return jsonify(result)
+    except Exception as e:
+        try:
+            loop.close()
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'message': str(e)}), 500
+
+@app.route('/api/webrtc/ice', methods=['POST'])
+def webrtc_ice():
+    """Optional ICE candidate hook (no-op for unified-plan without trickle).
+    Preserved for future use; non-breaking for current UI.
+    """
+    return jsonify({'ok': True})
+
+# ============== Wi-Fi Manager Routes ==============
+@app.route('/api/wifi/status')
+def wifi_status_api():
+    try:
+        if not wifi_manager:
+            return jsonify({'ok': False, 'msg': 'Wi-Fi manager unavailable'}), 501
+        st = wifi_manager.status()
+        # Backward-compatible fields expected by UI
+        network_name = st.get('connected_ssid') or ''
+        signal_val = st.get('signal')
+        # Provide both numeric and human-readable signal level
+        signal_level = None
+        try:
+            if isinstance(signal_val, int):
+                signal_level = f"{signal_val}%"
+        except Exception:
+            signal_level = None
+        return jsonify({
+            'ok': True,
+            'status': st,
+            'network': network_name if network_name else None,
+            'signal_level': signal_level
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': str(e)}), 500
+
+@app.route('/api/wifi/scan')
+def wifi_scan_api():
+    try:
+        if not wifi_manager:
+            return jsonify({'ok': False, 'msg': 'Wi-Fi manager unavailable'}), 501
+        return jsonify({'ok': True, 'networks': wifi_manager.scan()})
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': str(e)}), 500
+
+@app.route('/api/wifi/scan_full')
+def wifi_scan_full_api():
+    try:
+        if not wifi_manager:
+            return jsonify({'ok': False, 'msg': 'Wi-Fi manager unavailable'}), 501
+        return jsonify({'ok': True, 'networks': wifi_manager.scan_full()})
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': str(e)}), 500
+
+@app.route('/api/wifi/connect', methods=['POST'])
+def wifi_connect_api():
+    try:
+        if not wifi_manager:
+            return jsonify({'ok': False, 'msg': 'Wi-Fi manager unavailable'}), 501
+        data = request.get_json(silent=True) or {}
+        ssid = (data.get('ssid') or '').strip()
+        psk = (data.get('psk') or '').strip() or None
+        result = wifi_manager.connect(ssid, psk)
+        if result.get('ok') and psk:
+            wifi_manager.save_known(ssid, psk)
+        return jsonify(result), (200 if result.get('ok') else 400)
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': str(e)}), 500
+
+@app.route('/api/wifi/prefer', methods=['POST'])
+def wifi_prefer_api():
+    try:
+        if not wifi_manager:
+            return jsonify({'ok': False, 'msg': 'Wi-Fi manager unavailable'}), 501
+        data = request.get_json(silent=True) or {}
+        ssid = (data.get('ssid') or '').strip()
+        return jsonify(wifi_manager.prefer(ssid))
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': str(e)}), 500
+
+@app.route('/api/wifi/auto', methods=['POST'])
+def wifi_auto_api():
+    try:
+        if not wifi_manager:
+            return jsonify({'ok': False, 'msg': 'Wi-Fi manager unavailable'}), 501
+        data = request.get_json(silent=True) or {}
+        enabled = bool(data.get('enabled', True))
+        return jsonify(wifi_manager.set_auto(enabled))
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': str(e)}), 500
 
 # ============== TTS Routes ==============
 
@@ -728,6 +914,134 @@ def set_language():
         return jsonify({"ok": True, "msg": f"Language set to {language}"})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Language error: {e}"})
+
+# ============== Client Event Route (voice feedback) ==============
+
+@app.route('/client/event', methods=['POST'])
+def client_event():
+    """Voice feedback when client connects/disconnects the UI.
+    Accepts JSON or form data with field 'event' in {'connect','disconnect'} and optional 'language'.
+    """
+    try:
+        language = 'en'
+        event = None
+        # Accept JSON first
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            event = (data.get('event') or '').strip().lower()
+            language = (data.get('language') or language).strip().lower() or language
+        else:
+            # Fallback to form / beacon (text/plain) small body
+            event = (request.values.get('event') or '').strip().lower()
+            language = (request.values.get('language') or language).strip().lower() or language
+
+        if event not in ('connect','disconnect'):
+            return jsonify({"ok": False, "msg": "Invalid or missing event"}), 400
+
+        # Prefer pre-generated system sounds if available
+        try:
+            import os
+            import tempfile
+            base_dir = '/home/havatar/Avatar-robot/sounds/system'
+            name = 'client_connected' if event == 'connect' else 'standby_mode'
+            from modules.device_detector import SPK_PLUG
+            
+            # Try mp3 first, then wav
+            mp3_path = os.path.join(base_dir, f"{name}.mp3")
+            wav_path = os.path.join(base_dir, f"{name}.wav")
+            
+            if os.path.exists(mp3_path):
+                import subprocess
+                # Convert MP3 to WAV using mpg123, then play via aplay with proper ALSA device
+                temp_wav = os.path.join(tempfile.gettempdir(), f"client_event_{name}.wav")
+                decode_result = subprocess.run(['mpg123', '-q', '-w', temp_wav, mp3_path], timeout=30)
+                if decode_result.returncode == 0:
+                    subprocess.run(['aplay', '-q', '-D', SPK_PLUG, temp_wav], timeout=30)
+                    try:
+                        os.remove(temp_wav)
+                    except:
+                        pass
+                    return jsonify({"ok": True, "spoke": True, "msg": "Played pre-generated mp3", "event": event})
+            
+            if os.path.exists(wav_path):
+                import subprocess
+                subprocess.run(['aplay', '-q', '-D', SPK_PLUG, wav_path], timeout=30)
+                return jsonify({"ok": True, "spoke": True, "msg": "Played pre-generated wav", "event": event})
+        except Exception as e:
+            print(f"[Client Event] Pre-generated playback failed: {e}")
+
+        # Fallback to live TTS
+        try:
+            text = "system status updated, client connected" if event == 'connect' else "system status updated, streaming stopped. going to standby mode"
+            from modules.tts import tts
+            result = tts.speak(text, language)
+            return jsonify({"ok": True, "spoke": True, "msg": result.get('msg', ''), "event": event})
+        except Exception as e:
+            return jsonify({"ok": False, "spoke": False, "msg": f"TTS error: {e}", "event": event}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+@app.route('/api/system/sounds/generate', methods=['POST'])
+def generate_system_sounds():
+    """Generate and save system voice prompts (connect/disconnect). Uses Edge-TTS if available, otherwise Piper."""
+    try:
+        import os
+        from pathlib import Path
+        Path('/home/havatar/Avatar-robot/sounds/system').mkdir(parents=True, exist_ok=True)
+
+        data = request.get_json(silent=True) or {}
+        language = (data.get('language') or 'en').strip().lower()
+
+        texts = {
+            'client_connected': "system status updated, client connected",
+            'standby_mode': "system status updated, streaming stopped. going to standby mode"
+        }
+
+        saved = {}
+        try:
+            # Try Edge-TTS first for mp3
+            import asyncio, edge_tts
+            temp_dir = Path('/tmp/edge_tts_audio'); temp_dir.mkdir(exist_ok=True)
+            from modules.tts import tts as tts_module
+            voice = tts_module.edge_voices.get(language)
+            if voice:
+                for name, text in texts.items():
+                    out_path = Path(f"/home/havatar/Avatar-robot/sounds/system/{name}.mp3")
+                    communicate = edge_tts.Communicate(text, voice)
+                    asyncio.run(communicate.save(str(out_path)))
+                    saved[name] = str(out_path)
+        except Exception as e:
+            print(f"[System Sounds] Edge-TTS generation failed: {e}")
+
+        # If any missing, try Piper to wav
+        missing = [n for n in texts.keys() if n not in saved]
+        if missing:
+            try:
+                from modules.tts import tts as tts_module
+                import subprocess
+                lang_dir = tts_module.languages.get(language, tts_module.languages['en'])['dir']
+                # Prefer piper-cli with config
+                model, cfg = (None, None)
+                if tts_module.bin and tts_module.kind == 'cli':
+                    model, cfg = tts_module._find_model_pair(lang_dir)
+                single_model = None
+                if tts_module.bin and tts_module.kind == 'piper':
+                    single_model = tts_module._find_model_single(lang_dir)
+                for name in missing:
+                    out_wav = f"/home/havatar/Avatar-robot/sounds/system/{name}.wav"
+                    text = texts[name]
+                    if tts_module.bin and tts_module.kind == 'cli' and model and cfg:
+                        subprocess.run([tts_module.bin, '--model', model, '--config', cfg, '--output_file', out_wav], input=text+"\n", text=True, timeout=30)
+                        saved[name] = out_wav
+                    elif tts_module.bin and tts_module.kind == 'piper' and single_model:
+                        subprocess.run([tts_module.bin, '--model', single_model, '--output_file', out_wav], input=text+"\n", text=True, timeout=30)
+                        saved[name] = out_wav
+            except Exception as e:
+                print(f"[System Sounds] Piper generation failed: {e}")
+
+        return jsonify({"ok": True, "saved": saved, "language": language})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
 
 # Global word learning storage
 learned_words = {
@@ -1228,9 +1542,9 @@ def set_volume():
                         cmd = ['amixer', '-c', card, 'set', control, f'{volume}%', 'unmute']
                     else:
                         cmd = ['amixer', 'set', control, f'{volume}%', 'unmute']
-                
+
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
-                
+
                 if result.returncode == 0:
                     card_str = f"card {card}" if card else "default card"
                     print(f"[Audio] ✓ Volume set to {volume}% on {card_str} using '{control}' control")
@@ -1238,13 +1552,10 @@ def set_volume():
                     return jsonify({"ok": True, "msg": f"Volume set to {volume}% on {card_str}"})
                 else:
                     last_error = result.stderr.strip()
-                    
-            except subprocess.TimeoutExpired:
-                last_error = "Timeout"
-                continue
             except Exception as e:
                 last_error = str(e)
-                continue
+                
+        
         
         # If we get here, none of the cards worked
         if not success:
@@ -1357,6 +1668,194 @@ def handle_disconnect():
     
     print(f"[Motor Safety] Client {request.sid} removed. Total clients: {len(motor_clients_connected)}")
 
+# Global variables for audio input streaming
+audio_input_streaming = False
+audio_input_thread = None
+audio_queue = queue.Queue(maxsize=100)  # Buffer up to 100 audio chunks
+
+def audio_input_worker():
+    """Background thread to handle audio input streaming with optimized buffering"""
+    global audio_input_streaming, audio_queue
+
+    print("[Audio Input] Starting audio input streaming thread")
+
+    try:
+        from modules.device_detector import SPK_PLUG
+        speaker_device = SPK_PLUG if 'SPK_PLUG' in globals() else 'default'
+
+        # Start aplay in the background for continuous playback (optimized for low latency)
+        play_process = subprocess.Popen([
+            'aplay', '-q', '--buffer-size=2048', '-D', speaker_device,
+            '-f', 'S16_LE', '-r', '16000', '-c', '1',  # 16-bit mono 16kHz
+            '-'  # Read from stdin
+        ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        print("[Audio Input] Started continuous playback process")
+
+        # Optimized buffering: small enough for low latency, large enough for smooth playback
+        audio_buffer = bytearray()
+        min_buffer_size = 1600  # 1600 bytes = 100ms - play when available
+        max_buffer_size = 16000  # 16000 bytes = 1 second max buffer
+        chunk_size = 3200  # 3200 bytes = 200ms chunks
+
+        while audio_input_streaming:
+            try:
+                # Get audio data from queue
+                if audio_queue and not audio_queue.empty():
+                    try:
+                        audio_data_obj = audio_queue.get(timeout=0.05)
+
+                        # Handle raw PCM16 data from multiple input shapes
+                        if audio_data_obj.get('format') == 'pcm16':
+                            pcm_field = audio_data_obj.get('audio')
+                            pcm_data = b''
+                            try:
+                                if isinstance(pcm_field, (bytes, bytearray, memoryview)):
+                                    pcm_data = bytes(pcm_field)
+                                elif isinstance(pcm_field, str):
+                                    import base64
+                                    pcm_data = base64.b64decode(pcm_field)
+                                elif isinstance(pcm_field, list):
+                                    # list of ints 0-255
+                                    pcm_data = bytes(pcm_field)
+                                else:
+                                    # Unknown type; skip
+                                    pcm_data = b''
+                            except Exception as e:
+                                print(f"[Audio Input] Decode error, dropping chunk: {e}")
+                                pcm_data = b''
+
+                            if pcm_data:
+                                # Add raw PCM data directly to buffer
+                                audio_buffer.extend(pcm_data)
+                                try:
+                                    print(f"[Audio Input] Enqueued PCM: {len(pcm_data)} bytes, buffer={len(audio_buffer)}")
+                                except Exception:
+                                    pass
+
+                            # Buffer management: prevent excessive growth
+                            if len(audio_buffer) > max_buffer_size:
+                                excess = len(audio_buffer) - max_buffer_size
+                                audio_buffer = audio_buffer[excess:]
+
+                        # Play when we have minimum data
+                        while len(audio_buffer) >= min_buffer_size and audio_input_streaming:
+                            play_chunk_size = min(chunk_size, len(audio_buffer))
+                            chunk = audio_buffer[:play_chunk_size]
+                            audio_buffer = audio_buffer[play_chunk_size:]
+
+                            try:
+                                play_process.stdin.write(chunk)
+                                play_process.stdin.flush()
+                            except (BrokenPipeError, OSError) as e:
+                                print(f"[Audio Input] Playback process error: {e}, restarting...")
+                                if play_process.poll() is not None:
+                                    play_process = subprocess.Popen([
+                                    'aplay', '-q', '--buffer-size=2048', '-D', speaker_device,
+                                        '-f', 'S16_LE', '-r', '16000', '-c', '1',
+                                        '-'
+                                    ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                break
+                    except queue.Empty:
+                        pass
+                else:
+                    # No data available, send minimal silence to prevent gaps
+                    if len(audio_buffer) < min_buffer_size:
+                        silence = b'\x00' * 800  # 50ms of silence
+                        try:
+                            play_process.stdin.write(silence)
+                            play_process.stdin.flush()
+                        except (BrokenPipeError, OSError):
+                            pass
+
+                    time.sleep(0.02)  # Small delay for responsiveness
+
+            except Exception as e:
+                print(f"[Audio Input] Processing error: {e}")
+                time.sleep(0.05)
+
+        # Clean up
+        try:
+            if play_process and play_process.poll() is None:
+                play_process.stdin.close()
+                play_process.wait(timeout=2)
+        except:
+            if play_process:
+                play_process.kill()
+
+        print("[Audio Input] Streaming stopped, clearing audio buffer")
+
+    except Exception as e:
+        print(f"[Audio Input] Worker thread error: {e}")
+    finally:
+        print("[Audio Input] Audio input streaming thread stopped")
+
+@socketio.on('start_audio_input')
+def handle_start_audio_input():
+    """Handle start audio input streaming from laptop to Pi speaker"""
+    global audio_input_streaming, audio_input_thread, audio_queue
+
+    try:
+        if audio_input_streaming:
+            emit('audio_input_status', {'status': 'already_started'})
+            return
+
+        print("[WebSocket] Starting audio input streaming (laptop mic → Pi speaker)")
+        audio_input_streaming = True
+        audio_queue = queue.Queue(maxsize=100)  # Buffer up to 100 audio chunks
+
+        # Start background thread to handle audio streaming
+        audio_input_thread = threading.Thread(target=audio_input_worker, daemon=True)
+        audio_input_thread.start()
+
+        emit('audio_input_status', {'status': 'started'})
+
+    except Exception as e:
+        print(f"[WebSocket] Audio input start error: {e}")
+        emit('audio_input_status', {'status': 'error', 'message': str(e)})
+
+@socketio.on('stop_audio_input')
+def handle_stop_audio_input():
+    """Handle stop audio input streaming"""
+    global audio_input_streaming, audio_input_thread, audio_queue
+
+    try:
+        print("[WebSocket] Stopping audio input streaming")
+        audio_input_streaming = False
+
+        if audio_input_thread and audio_input_thread.is_alive():
+            audio_input_thread.join(timeout=2.0)
+
+        audio_queue = None
+        emit('audio_input_status', {'status': 'stopped'})
+
+    except Exception as e:
+        print(f"[WebSocket] Audio input stop error: {e}")
+        emit('audio_input_status', {'status': 'error', 'message': str(e)})
+
+@socketio.on('audio_input_data')
+def handle_audio_input_data(data):
+    """Handle incoming raw PCM audio data from laptop microphone"""
+    global audio_input_streaming, audio_queue
+
+    if not audio_input_streaming or not audio_queue:
+        return
+
+    try:
+        # Add raw PCM audio data to queue (non-blocking)
+        if not audio_queue.full():
+            audio_queue.put(data, block=False)  # Pass the entire data object including format info
+        else:
+            # Queue full, drop oldest chunk (don't block)
+            try:
+                audio_queue.get_nowait()
+                audio_queue.put(data, block=False)
+            except queue.Empty:
+                pass
+
+    except Exception as e:
+        print(f"[WebSocket] Audio input data queue error: {e}")
+
 @socketio.on('start_simple_audio')
 def handle_start_audio():
     """Handle start audio streaming request"""
@@ -1411,7 +1910,8 @@ def get_status():
         mediamtx_stream_active = False
         
         try:
-            result = subprocess.run(['pgrep', '-f', 'ffmpeg.*rtsp://localhost:8554/stream'], capture_output=True, text=True)
+            # Match both localhost and 127.0.0.1 (or any host) for robustness
+            result = subprocess.run(['pgrep', '-f', 'ffmpeg.*8554/stream'], capture_output=True, text=True)
             ffmpeg_running = result.returncode == 0 and len(result.stdout.strip()) > 0
             
             # Also check MediaMTX API to see if stream is actually active
@@ -1451,17 +1951,78 @@ def get_status():
         print(f"[Status API] Streaming status: FFmpeg={ffmpeg_running}, MediaMTX={mediamtx_stream_active}, Internal={streaming_status.get('active', False)}, Final={is_streaming}")
         
         # Get framerate from the actual global variable (updated by FPS changes)
+        actual_framerate = camera_status.get('framerate', 10)
         try:
             from modules import mediamtx_camera
             actual_framerate = mediamtx_camera.current_framerate
         except:
-            actual_framerate = camera_status.get('framerate', 10)
+            pass
+        
+        # Try to get actual stream FPS from the running stream
+        detected_fps = None
+        if is_streaming:
+            try:
+                # Check if FFmpeg process is running and get its FPS setting
+                result = subprocess.run(
+                    ['pgrep', '-f', 'ffmpeg.*8554/stream'],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    # Try to get actual FPS from the stream using ffprobe
+                    try:
+                        fps_result = subprocess.run(
+                            ['timeout', '2', 'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                             '-show_entries', 'stream=avg_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1',
+                             'rtsp://127.0.0.1:8554/stream'],
+                            capture_output=True,
+                            text=True,
+                            timeout=3
+                        )
+                        if fps_result.returncode == 0 and fps_result.stdout.strip():
+                            fps_str = fps_result.stdout.strip().split()[0]
+                            if '/' in fps_str:
+                                num, den = map(int, fps_str.split('/'))
+                                if den > 0:
+                                    detected_fps = round(num / den)
+                    except:
+                        pass
+            except:
+                pass
+        
+        # Use detected FPS if available, otherwise use configured FPS
+        if detected_fps:
+            actual_framerate = detected_fps
+            print(f"[Status API] Detected actual stream FPS: {detected_fps}")
+        else:
+            # Fallback: try to get FPS from v4l2 device
+            try:
+                # Prefer the detected/active camera device over a hardcoded path
+                device_for_v4l2 = camera_status.get('device', CAMERA_DEVICE)
+                v4l2_result = subprocess.run(
+                    ['v4l2-ctl', f'--device={device_for_v4l2}', '--get-parm'],
+                    capture_output=True,
+                    text=True,
+                    timeout=1
+                )
+                if v4l2_result.returncode == 0:
+                    for line in v4l2_result.stdout.split('\n'):
+                        if 'Frames per second' in line or 'fps' in line.lower():
+                            # Extract FPS from line like "Frames per second: 20.000 (20/1)"
+                            match = re.search(r'(\d+\.?\d*)\s*\(.*?(\d+)/(\d+)\)', line)
+                            if match:
+                                detected_fps = round(float(match.group(1)))
+                                actual_framerate = detected_fps
+                                print(f"[Status API] Detected v4l2 device FPS: {detected_fps}")
+                                break
+            except:
+                pass
         
         return jsonify({
             'running': is_streaming,
             'resolution': camera_status.get('resolution', '480p'),
             'framerate': actual_framerate,
-            'camera_device': camera_status.get('device', '/dev/video0'),
+            'camera_device': camera_status.get('device', CAMERA_DEVICE),
             'mic_device': audio_status.get('mic_device', 'plughw:3,0'),
             'available_resolutions': list(camera_settings.keys()),
             'fps_range': [10, 25],
@@ -1469,7 +2030,35 @@ def get_status():
             'streaming': is_streaming
         })
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[Status API] Error: {e}")
+        print(f"[Status API] Traceback: {error_trace}")
         return jsonify({'error': str(e)}), 500
+
+    """Expose minimal Prometheus metrics without changing UI."""
+    try:
+        st = get_status().json
+    except Exception:
+        # If called directly, compute like /api/status
+        try:
+            resp = app.test_client().get('/api/status')
+            st = resp.get_json() if resp.status_code == 200 else {}
+        except Exception:
+            st = {}
+
+    streaming = 1 if st.get('streaming') or st.get('running') else 0
+    fr = int(st.get('framerate') or 0)
+
+    # Compose text exposition
+    lines = []
+    lines.append('# HELP avatar_streaming_active 1 if streaming active, else 0')
+    lines.append('# TYPE avatar_streaming_active gauge')
+    lines.append(f'avatar_streaming_active {streaming}')
+    lines.append('# HELP avatar_stream_framerate Current stream framerate (fps)')
+    lines.append('# TYPE avatar_stream_framerate gauge')
+    lines.append(f'avatar_stream_framerate {fr}')
+    return Response('\n'.join(lines) + '\n', mimetype='text/plain')
 
 @app.route('/api/stream/start', methods=['POST'])
 def start_stream_api():
@@ -1507,8 +2096,8 @@ def refresh_stream_api():
         print("[Stream Refresh] Waiting for camera device to be free...")
         time.sleep(1)
         
-        # Get current resolution settings from state manager
-        from modules.avatar_state import get_last_resolution, get_resolution_settings
+        # Get current resolution/FPS settings from state manager
+        from modules.avatar_state import get_last_resolution, get_resolution_settings, get_last_fps
         resolution = get_last_resolution()
         settings = get_resolution_settings(resolution)
         if not settings:
@@ -1517,32 +2106,94 @@ def refresh_stream_api():
             settings = get_resolution_settings(resolution)
         width = settings['width']
         height = settings['height']
-        fps = settings['fps']
+        # Prefer the last set FPS from state so UI changes take effect after refresh
+        try:
+            fps = int(get_last_fps())
+        except Exception:
+            fps = int(settings.get('fps', 20))
         
-        # Resolution-specific bitrate mapping for proper bandwidth control
-        bitrate_map = {
-            "320p": ("500k", "700k"),   # 640x360 - low bandwidth (target, max)
-            "480p": ("1200k", "1500k"), # 854x480 - medium bandwidth
-            "720p": ("2500k", "3000k")  # 1280x720 - high bandwidth
+        # Resolve camera device from status (avoid hardcoded path)
+        camera_dev = CAMERA_DEVICE
+        try:
+            from modules.mediamtx_camera import get_camera_status as _get_cam_status
+            camera_dev = _get_cam_status().get('device', CAMERA_DEVICE)
+        except Exception:
+            pass
+
+        # Set v4l2 camera framerate explicitly before starting FFmpeg
+        try:
+            framerate_result = subprocess.run(
+                ['v4l2-ctl', f'--device={camera_dev}', '--set-parm', str(fps)],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if framerate_result.returncode == 0:
+                print(f"[Stream Refresh] Set v4l2 camera framerate to {fps} fps")
+            else:
+                print(f"[Stream Refresh] Warning: Failed to set v4l2 framerate: {framerate_result.stderr}")
+        except Exception as e:
+            print(f"[Stream Refresh] Warning: Could not set v4l2 framerate: {e}")
+        
+        # Resolution-specific bitrate mapping tuned for low-latency over 4G
+        video_bitrate_map = {
+            "320p": ("200k", "300k", "600k"),   # (b:v, maxrate, bufsize)
+            "480p": ("350k", "500k", "1000k"),
+            "720p": ("600k", "900k", "1800k"),
         }
-        video_bitrate, max_bitrate = bitrate_map.get(resolution, ("1200k", "1500k"))
+        audio_bitrate_map = {
+            "320p": "16k",
+            "480p": "24k",
+            "720p": "32k",
+        }
+        vb, mr, bs = video_bitrate_map.get(resolution, ("350k", "500k", "1000k"))
+        audio_bitrate = audio_bitrate_map.get(resolution, "24k")
+
+        # Scale video bitrate with FPS proportionally relative to 20 fps baseline
+        def _kbps(s: str) -> int:
+            try:
+                if s.endswith('k'):
+                    return int(s[:-1])
+                return int(s)
+            except Exception:
+                return 0
+        def _fmt_k(v: int) -> str:
+            return f"{max(v, 50)}k"  # enforce a sensible floor
+
+        baseline_fps = 20
+        try:
+            scale = max(5, int(fps)) / baseline_fps
+        except Exception:
+            scale = 1.0
+
+        vb_scaled = _fmt_k(int(_kbps(vb) * scale))
+        mr_scaled = _fmt_k(int(_kbps(mr) * scale))
+        bs_scaled = _fmt_k(int(_kbps(bs) * scale))
         
-        print(f"[Stream Refresh] Starting new FFmpeg process with {resolution} ({width}x{height}@{fps}fps, {video_bitrate} bitrate)...")
+        print(f"[Stream Refresh] Starting new FFmpeg process with {resolution} ({width}x{height}@{fps}fps, {vb} target bitrate)...")
         cmd = [
             'ffmpeg', '-nostdin',
-            '-f', 'v4l2', '-i', '/dev/video0',
-            '-f', 'alsa', '-i', 'plughw:3,0',
+            # Video input
+            '-f', 'v4l2', '-framerate', str(fps), '-thread_queue_size', '1024', '-i', camera_dev,
+            # Audio input (capture at 48k mono); resample with async smoothing to avoid jitter
+            '-f', 'alsa', '-thread_queue_size', '8192', '-ar', '48000', '-ac', '1', '-i', 'plughw:3,0',
+            # Processing
             '-vf', f'scale={width}:{height},fps={fps},format=yuv420p',
-            '-c:v', 'libx264', '-preset', 'ultrafast', 
-            '-b:v', video_bitrate,      # Target bitrate (resolution-specific)
-            '-maxrate', max_bitrate,    # Maximum bitrate
-            '-bufsize', f'{int(max_bitrate[:-1])*2}k',  # Buffer size = 2x maxrate
-            '-g', str(fps), 
+            '-af', 'aresample=async=1:min_hard_comp=0.100:first_pts=0,volume=2.0',
+            # Video encode
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+            '-x264-params', 'rc-lookahead=0:bframes=0:ref=2', 
+            '-b:v', vb_scaled,
+            '-maxrate', mr_scaled,
+            '-bufsize', bs_scaled,
+            '-g', str(fps),
             '-sc_threshold', '0', '-profile:v', 'main', '-level', '3.0',
-            '-c:a', 'libopus', '-b:a', '32k',
+            # Audio encode for RTSP (Opus) to ensure WebRTC audio without server transcode
+            '-c:a', 'libopus', '-b:a', audio_bitrate, '-application', 'voip', '-vbr', 'on', '-compression_level', '5', '-frame_duration', '20', '-dtx', '1', '-ar', '48000', '-ac', '1',
+            # Low-latency muxing / RTSP over TCP
+            '-fflags', '+nobuffer', '-flags', '+global_header', '-flush_packets', '1', '-use_wallclock_as_timestamps', '1',
             '-rtsp_transport', 'tcp',
-            '-reconnect', '1', '-reconnect_at_eof', '1', 
-            '-reconnect_streamed', '1', '-reconnect_delay_max', '2',
+            '-reconnect', '1', '-reconnect_at_eof', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '2',
             '-f', 'rtsp', 'rtsp://127.0.0.1:8554/stream'
         ]
         
@@ -1561,7 +2212,8 @@ def refresh_stream_api():
                 if items and items[0].get('ready', False):
                     tracks = items[0].get('tracks', [])
                     has_video = 'H264' in tracks
-                    has_audio = 'Opus' in tracks
+                    # Accept Opus (WebRTC) or AAC (RTSP input) as valid audio tracks
+                    has_audio = ('Opus' in tracks) or ('MPEG4-AUDIO' in tracks) or ('AAC' in tracks)
                     print(f"[Stream Refresh] Stream ready - Video: {has_video}, Audio: {has_audio}")
                     return jsonify({
                         'success': True, 
@@ -1624,6 +2276,13 @@ def update_framerate_smooth():
             print(f"[Smooth FPS] Updated camera module framerate to {new_framerate}")
         except Exception as e:
             print(f"[Smooth FPS] Failed to update camera module framerate: {e}")
+        # Persist FPS so that subsequent refresh/start uses it
+        try:
+            from modules.avatar_state import set_last_fps
+            set_last_fps(new_framerate)
+            print(f"[Smooth FPS] Persisted last_fps={new_framerate}")
+        except Exception as e:
+            print(f"[Smooth FPS] Failed to persist last_fps: {e}")
         
         # For now, we still need to restart, but let's make it faster
         import time
@@ -1882,7 +2541,7 @@ def _take_reliable_snapshot():
             '-i', rtsp_url,  # Capture from the stream
             '-vf', f'scale={width}:{height}',  # Scale to exact resolution
             '-frames:v', '1',  # Capture only 1 frame
-            '-q:v', '2',       # High quality
+            '-q:v', '8',       # Moderate quality to reduce file size (~30–70 KB at 720p)
             '-timeout', '5000000',  # 5 second timeout
             filename
         ]
@@ -2085,20 +2744,43 @@ def main():
     print("[MediaMTX Main] Launching web server on 0.0.0.0:5000")
     
     # Check if port is already in use (detect duplicate service instances)
+    # Retry with delays to handle service restart scenarios
     import socket
-    test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        test_sock.bind(('0.0.0.0', 5000))
-        test_sock.close()
-        print("[MediaMTX Main] Port 5000 is available")
-    except OSError as e:
-        print(f"[MediaMTX Main] ⚠️  ERROR: Port 5000 is already in use!")
-        print(f"[MediaMTX Main] ⚠️  This indicates a duplicate service instance is running.")
-        print(f"[MediaMTX Main] ⚠️  Check: sudo systemctl status avatar-tank avatar-mediamtx")
-        print(f"[MediaMTX Main] ⚠️  Disable duplicates: sudo systemctl disable avatar-mediamtx")
-        import sys
-        sys.exit(1)
+    import time
+    port_available = False
+    max_retries = 5
+    retry_delay = 2
     
+    for attempt in range(max_retries):
+        test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        test_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            test_sock.bind(('0.0.0.0', 5000))
+            test_sock.close()
+            port_available = True
+            if attempt > 0:
+                print(f"[MediaMTX Main] Port 5000 became available after {attempt} retry(ies)")
+            else:
+                print("[MediaMTX Main] Port 5000 is available")
+            break
+        except OSError as e:
+            test_sock.close()
+            if attempt < max_retries - 1:
+                print(f"[MediaMTX Main] Port 5000 is in use, waiting {retry_delay}s before retry ({attempt + 1}/{max_retries})...")
+                time.sleep(retry_delay)
+            else:
+                print(f"[MediaMTX Main] ⚠️  ERROR: Port 5000 is still in use after {max_retries} attempts!")
+                print(f"[MediaMTX Main] ⚠️  This indicates a duplicate service instance is running.")
+                print(f"[MediaMTX Main] ⚠️  Check: sudo systemctl status avatar-tank avatar-mediamtx")
+                print(f"[MediaMTX Main] ⚠️  Disable duplicates: sudo systemctl disable avatar-mediamtx")
+                import sys
+                sys.exit(1)
+    
+    # HTTPS setup is complex with Flask-SocketIO + eventlet
+    # For now, start with HTTP and use browser flags for microphone access
+    print(f"[MediaMTX Main] 🌐 Starting with HTTP (for microphone access, use browser flags)")
+    print(f"[MediaMTX Main] 📝 Chrome: chrome://flags/#unsafely-treat-insecure-origin-as-secure")
+    print(f"[MediaMTX Main] 📝 Add: http://[your-pi-ip]:5000")
     socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 
@@ -2222,190 +2904,6 @@ def _stop_reliable_recording():
         print(f"[Reliable Recording] ✗ {error_msg}")
         return {'success': False, 'message': error_msg}
 
-# Global variables for bandwidth tracking
-last_network_stats = {}
-last_bandwidth_time = 0
-last_stream_stats = {}
-last_stream_time = 0
-
-@app.route('/api/network/bandwidth', methods=['GET'])
-def get_network_bandwidth():
-    """Get real-time network bandwidth usage with proper rate calculation"""
-    global last_network_stats, last_bandwidth_time
-    
-    try:
-        import subprocess
-        import time
-        
-        current_time = time.time()
-        
-        # Get network interface statistics
-        result = subprocess.run(['cat', '/proc/net/dev'], capture_output=True, text=True)
-        if result.returncode != 0:
-            return jsonify({'bandwidth_kbps': 0, 'error': 'Failed to read network stats'})
-        
-        lines = result.stdout.strip().split('\n')
-        current_stats = {}
-        
-        for line in lines[2:]:  # Skip header lines
-            parts = line.split(':')
-            if len(parts) >= 2:
-                interface = parts[0].strip()
-                stats = parts[1].split()
-                if len(stats) >= 9:
-                    # bytes received, bytes transmitted
-                    rx_bytes = int(stats[0])
-                    tx_bytes = int(stats[8])
-                    current_stats[interface] = {'rx': rx_bytes, 'tx': tx_bytes}
-        
-        # Calculate bandwidth rate for active interfaces
-        total_bandwidth_kbps = 0
-        active_interfaces = []
-        
-        # Only calculate rate if we have previous data
-        if last_network_stats and last_bandwidth_time > 0:
-            time_diff = current_time - last_bandwidth_time
-            
-            for interface, current_stat in current_stats.items():
-                if interface in ['wlan0', 'eth0', 'zt2lrsngy5'] and interface in last_network_stats:
-                    last_stat = last_network_stats[interface]
-                    
-                    # Calculate bytes per second
-                    rx_rate = (current_stat['rx'] - last_stat['rx']) / time_diff
-                    tx_rate = (current_stat['tx'] - last_stat['tx']) / time_diff
-                    total_rate = rx_rate + tx_rate
-                    
-                    # Convert to KB/s
-                    bandwidth_kbps = total_rate / 1024
-                    
-                    if bandwidth_kbps > 0:
-                        active_interfaces.append({
-                            'name': interface,
-                            'rx_kbps': rx_rate / 1024,
-                            'tx_kbps': tx_rate / 1024,
-                            'total_kbps': bandwidth_kbps
-                        })
-                        total_bandwidth_kbps += bandwidth_kbps
-        
-        # Update tracking variables
-        last_network_stats = current_stats.copy()
-        last_bandwidth_time = current_time
-        
-        # Cap bandwidth at reasonable limit for display
-        total_bandwidth_kbps = min(total_bandwidth_kbps, 500)  # Cap at 500 KB/s
-        
-        return jsonify({
-            'bandwidth_kbps': round(total_bandwidth_kbps, 1),
-            'interfaces': active_interfaces,
-            'timestamp': current_time
-        })
-        
-    except Exception as e:
-        return jsonify({'bandwidth_kbps': 0, 'error': str(e)})
-
-@app.route('/api/stream/bandwidth', methods=['GET'])
-def get_stream_bandwidth():
-    """Get actual stream bandwidth usage by monitoring MediaMTX connections"""
-    global last_stream_stats, last_stream_time
-    
-    try:
-        import subprocess
-        import time
-        
-        current_time = time.time()
-        
-        # Get MediaMTX API status to check active connections
-        try:
-            import requests
-            mediamtx_response = requests.get('http://localhost:9997/v3/paths/list', timeout=2)
-            if mediamtx_response.status_code == 200:
-                paths_data = mediamtx_response.json()
-                stream_active = False
-                for path in paths_data.get('items', []):
-                    if path.get('name') == 'stream' and path.get('ready'):
-                        stream_active = True
-                        break
-                
-                if not stream_active:
-                    return jsonify({
-                        'stream_bandwidth_kbps': 0,
-                        'stream_active': False,
-                        'message': 'No active stream'
-                    })
-        except:
-            pass
-        
-        # Monitor specific ports used by the stream
-        stream_ports = [8554, 8888, 8889]
-        total_stream_bytes = 0
-        
-        # Get network connections for stream ports
-        result = subprocess.run(['ss', '-tuln'], capture_output=True, text=True)
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            for line in lines:
-                for port in stream_ports:
-                    if f':{port}' in line and 'ESTABLISHED' in line:
-                        # Extract bytes from connection info if available
-                        parts = line.split()
-                        if len(parts) > 4:
-                            # This is a simplified approach - in reality we'd need more detailed monitoring
-                            pass
-        
-        # Alternative: Use netstat to get connection info
-        netstat_result = subprocess.run(['netstat', '-i'], capture_output=True, text=True)
-        if netstat_result.returncode == 0:
-            lines = netstat_result.stdout.strip().split('\n')
-            for line in lines:
-                if 'wlan0' in line or 'eth0' in line:
-                    parts = line.split()
-                    if len(parts) >= 10:
-                        # Extract RX/TX bytes from interface stats
-                        rx_bytes = int(parts[2]) if parts[2].isdigit() else 0
-                        tx_bytes = int(parts[9]) if parts[9].isdigit() else 0
-                        total_stream_bytes = rx_bytes + tx_bytes
-                        break
-        
-        # Calculate stream bandwidth rate
-        stream_bandwidth_kbps = 0
-        
-        if last_stream_stats and last_stream_time > 0:
-            time_diff = current_time - last_stream_time
-            if time_diff > 0:
-                bytes_diff = total_stream_bytes - last_stream_stats.get('total_bytes', 0)
-                stream_bandwidth_kbps = (bytes_diff / time_diff) / 1024  # Convert to KB/s
-        
-        # Update tracking variables
-        last_stream_stats = {'total_bytes': total_stream_bytes}
-        last_stream_time = current_time
-        
-        # Get actual bandwidth from current stream settings
-        actual_bandwidth = 0
-        try:
-            # Get current resolution and calculate actual bandwidth from FFmpeg settings
-            from modules.mediamtx_camera import current_resolution, camera_settings
-            if current_resolution in camera_settings:
-                # Use the same bitrate mapping as in get_ffmpeg_command()
-                bitrate_map = {
-                    "320p": 120,   # video bitrate
-                    "480p": 180,   
-                    "720p": 300    
-                }
-                video_bitrate = bitrate_map.get(current_resolution, 180)
-                audio_bitrate = 32  # Fixed audio bitrate
-                actual_bandwidth = video_bitrate + audio_bitrate
-        except:
-            actual_bandwidth = 212  # Default estimate
-        
-        return jsonify({
-            'stream_bandwidth_kbps': round(actual_bandwidth, 1),
-            'theoretical_bandwidth_kbps': actual_bandwidth,
-            'stream_active': True,
-            'timestamp': current_time
-        })
-        
-    except Exception as e:
-        return jsonify({'stream_bandwidth_kbps': 0, 'error': str(e)})
 
 @app.route('/api/reconnection/status', methods=['GET'])
 def get_reconnection_status():
@@ -2425,23 +2923,6 @@ def get_reconnection_status():
     except Exception as e:
         return jsonify({'error': str(e)})
 
-@app.route('/api/bandwidth/status', methods=['GET'])
-def get_bandwidth_status():
-    """Get current bandwidth management status and network conditions"""
-    try:
-        from modules.mediamtx_camera import bandwidth_manager
-        
-        return jsonify({
-            'current_resolution': bandwidth_manager['current_resolution'],
-            'current_fps': bandwidth_manager['current_fps'],
-            'current_bitrate': bandwidth_manager['current_bitrate'],
-            'network_conditions': bandwidth_manager['network_conditions'],
-            'adaptation_history': bandwidth_manager['adaptation_history'][-5:],  # Last 5 adaptations
-            'last_adaptation_time': bandwidth_manager['last_adaptation_time']
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)})
 
 @app.route('/api/audio/quality', methods=['GET'])
 def get_audio_quality():
@@ -2475,6 +2956,68 @@ def get_cpu_status():
         })
     except Exception as e:
         return jsonify({'error': str(e)})
+
+@app.route('/api/wifi/status', methods=['GET'])
+def get_wifi_status():
+    """Get current WiFi network name and signal strength"""
+    try:
+        import subprocess
+
+        # Get WiFi info using nmcli
+        result = subprocess.run(['nmcli', '-t', '-f', 'active,ssid,signal', 'device', 'wifi'],
+                              capture_output=True, text=True, timeout=10)
+
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            for line in lines:
+                if line.startswith('yes:'):  # Active connection
+                    parts = line.split(':')
+                    if len(parts) >= 3:
+                        ssid = parts[1]
+                        signal = parts[2]
+                        return jsonify({
+                            'network': ssid,
+                            'signal_strength': int(signal) if signal.isdigit() else 0,
+                            'signal_level': get_signal_level(int(signal) if signal.isdigit() else 0)
+                        })
+
+        # Fallback: try iwconfig for older systems
+        result = subprocess.run(['iwconfig', 'wlan0'], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            output = result.stdout
+            # Parse ESSID and signal level from iwconfig output
+            ssid_match = re.search(r'ESSID:"([^"]*)"', output)
+            signal_match = re.search(r'Signal level=(-?\d+)', output)
+
+            ssid = ssid_match.group(1) if ssid_match else 'Unknown'
+            signal_raw = int(signal_match.group(1)) if signal_match else 0
+
+            # Convert dBm to percentage (rough approximation)
+            signal_percent = max(0, min(100, (signal_raw + 100) * 2))
+
+            return jsonify({
+                'network': ssid,
+                'signal_strength': signal_percent,
+                'signal_level': get_signal_level(signal_percent)
+            })
+
+        return jsonify({'network': 'Not connected', 'signal_strength': 0, 'signal_level': 'No signal'})
+
+    except Exception as e:
+        return jsonify({'network': 'Error', 'signal_strength': 0, 'signal_level': 'Error', 'error': str(e)})
+
+def get_signal_level(signal_strength):
+    """Convert signal strength percentage to descriptive level"""
+    if signal_strength >= 75:
+        return 'Excellent'
+    elif signal_strength >= 50:
+        return 'Good'
+    elif signal_strength >= 25:
+        return 'Fair'
+    elif signal_strength > 0:
+        return 'Poor'
+    else:
+        return 'No signal'
 
 @app.route('/api/cpu/optimize', methods=['POST'])
 def trigger_cpu_optimization():
@@ -2559,7 +3102,12 @@ def health_check():
         # 3. Check camera device availability
         camera_available = False
         try:
-            camera_device = "/dev/video0"  # Default
+            # Prefer detected/active camera device
+            try:
+                from modules.mediamtx_camera import get_camera_status as _get_cam_status
+                camera_device = _get_cam_status().get('device', CAMERA_DEVICE)
+            except Exception:
+                camera_device = CAMERA_DEVICE
             result = subprocess.run(['fuser', camera_device], capture_output=True, timeout=5)
             camera_available = result.returncode != 0  # Available if no processes using it
         except Exception as e:
@@ -2800,38 +3348,9 @@ def resume_recording():
     except Exception as e:
         return jsonify({'error': str(e)})
 
-@app.route('/metrics')
-def metrics():
-    try:
-        from modules.mediamtx_camera import get_streaming_status
-        status = get_streaming_status()
-        lines = [
-            f"avatar_stream_active {1 if status.get('active') else 0}",
-        ]
-        return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
-    except Exception as e:
-        return f"avatar_metrics_error 1\n# {e}\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
+ 
 
-# Background bandwidth management thread
-def bandwidth_management_thread():
-    """Background thread to monitor and adapt stream quality"""
-    import time
-    from modules.mediamtx_camera import adapt_stream_quality, streaming_active
-    
-    while True:
-        try:
-            if streaming_active:
-                # Check and adapt stream quality
-                adaptation_applied = adapt_stream_quality()
-                
-                if adaptation_applied:
-                    print("[Bandwidth Manager] Stream quality adaptation applied")
-            
-            time.sleep(15)  # Check every 15 seconds
-            
-        except Exception as e:
-            print(f"[Bandwidth Manager] Error in monitoring thread: {e}")
-            time.sleep(30)  # Wait longer on error
+# Bandwidth management thread removed
 
 # Background CPU monitoring thread
 def cpu_monitoring_thread():
@@ -2964,6 +3483,36 @@ def audio_quality_monitor_thread():
             print(f"[Audio Monitor] Error in monitoring thread: {e}")
             time.sleep(10)  # Wait longer on error
 
+@socketio.on('audio_input_pcm')
+def handle_audio_input_pcm(data):
+    """Handle incoming raw PCM16 bytes from laptop microphone (binary)."""
+    global audio_input_streaming, audio_queue
+
+    if not audio_input_streaming or not audio_queue:
+        return
+
+    try:
+        # data is bytes or bytearray; push directly
+        if isinstance(data, (bytes, bytearray)):
+            payload = {'format': 'pcm16', 'audio': data}
+        else:
+            # Socket.IO might give memoryview or array-like
+            payload = {'format': 'pcm16', 'audio': bytes(data)}
+        try:
+            print(f"[Audio Input] Received binary PCM chunk: {len(payload['audio'])} bytes")
+        except Exception:
+            pass
+        # Keep latency low: prefer latest packet
+        try:
+            if audio_queue.full():
+                while not audio_queue.empty():
+                    audio_queue.get_nowait()
+            audio_queue.put_nowait(payload)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[WebSocket] Audio input binary error: {e}")
+
 if __name__ == "__main__":
     # Automatic recovery and cleanup on startup
     try:
@@ -2973,11 +3522,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[Main] Error during auto recovery: {e}")
     
-    # Start bandwidth management thread
     import threading
-    bandwidth_thread = threading.Thread(target=bandwidth_management_thread, daemon=True)
-    bandwidth_thread.start()
-    print("[Bandwidth Manager] Background bandwidth management started")
     
     # Start CPU monitoring thread
     cpu_thread = threading.Thread(target=cpu_monitoring_thread, daemon=True)
