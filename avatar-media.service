@@ -1,0 +1,27 @@
+[Unit]
+Description=Avatar Tank Media Stack (MediaMTX)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=havatar
+Group=havatar
+WorkingDirectory=/home/havatar/Avatar-robot
+ExecStart=/usr/local/bin/mediamtx config/mediamtx.yml
+Restart=always
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=20
+KillSignal=SIGTERM
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+WatchdogSec=0
+MemoryMax=200M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
+
+

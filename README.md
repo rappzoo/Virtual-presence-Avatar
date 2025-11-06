@@ -143,21 +143,23 @@ http://YOUR_IP:5000
 
 ```
 Avatar-robot/
-├── README.md                    # This file
-├── PREREQUISITES.md             # Detailed setup requirements
+├── README.md                    # This file - complete project documentation
 ├── CHANGELOG.md                 # Version history
+├── CONTRIBUTING.md              # Contribution guidelines
 ├── LICENSE                      # MIT License
 ├── requirements.txt             # Python dependencies
 │
-├── avatar-tank.service          # Systemd service (active)
-├── start_avatar_simple.sh       # Startup script (active)
+├── avatar-tank.service          # Systemd service (main app)
+├── avatar-media.service         # Systemd service (MediaMTX)
+├── start_avatar_simple.sh       # Startup script
 │
 ├── config/                      # Configuration files
 │   ├── mediamtx.yml            # MediaMTX streaming config
-│   └── avatar_state.json       # Persistent system state
+│   ├── avatar_state.json       # Persistent system state
+│   └── wifi.json               # Wi-Fi configuration
 │
 ├── modules/                     # Core Python modules
-│   ├── mediamtx_main.py        # Main Flask application (2700+ lines)
+│   ├── mediamtx_main.py        # Main Flask application
 │   ├── mediamtx_camera.py      # Camera & streaming control
 │   ├── mediamtx_audio.py       # Audio management
 │   ├── mediamtx_recorder.py    # Video recording
@@ -167,29 +169,40 @@ Avatar-robot/
 │   ├── predictor.py            # Word prediction for TTS
 │   ├── avatar_state.py         # State persistence
 │   ├── audio_utils.py          # Audio utilities
-│   └── esp32_communicator.py   # ESP32 communication
+│   ├── esp32_communicator.py   # ESP32 communication
+│   └── wifi_manager.py        # Wi-Fi management
 │
 ├── static/                      # Web interface
-│   └── index.html              # Single-page application (4700+ lines)
+│   ├── index.html              # Single-page application
+│   └── js/                     # JavaScript modules
+│
+├── templates/                   # HTML templates
+│   └── control.html            # Control interface template
 │
 ├── piper/                       # TTS engine
 │   ├── bin/piper               # Piper TTS binary
 │   ├── models/                 # Voice models (EN, RO, DE)
 │   └── words.txt              # Dictionary
 │
-├── sounds/                      # Sound effects (20 slots)
-│   ├── sound1.mp3 ... sound20.mp3
+├── sounds/                      # Sound effects (20+ slots)
+│   └── sound*.mp3              # Custom sound files
 │
 ├── snapshots/                   # Captured images
 ├── recordings/                  # Video recordings
 ├── dicts/                       # Word dictionaries
 ├── esp32_firmware/              # Motor controller firmware
+│   └── flash_esp32.sh          # Firmware flashing script
 │
-└── archive/                     # Archived/unused files
-    ├── old_scripts/            # Previous startup scripts
-    ├── old_services/           # Old service configurations
-    ├── old_logs/               # Archived log files
-    └── old_docs/               # Previous documentation
+├── scripts/                     # Utility scripts
+│   ├── check_services.sh       # Service health check
+│   └── *.sh                    # Other utility scripts
+│
+└── docs/                        # Additional documentation
+    ├── PREREQUISITES.md        # Detailed setup requirements
+    ├── FEATURES_AND_PURPOSE.md # Complete feature list
+    ├── WIFI_SETUP.md           # Wi-Fi configuration guide
+    ├── MOTOR_SAFETY.md         # Motor safety documentation
+    └── archive/                # Historical documentation
 ```
 
 ## 🎛️ API Endpoints
@@ -304,6 +317,32 @@ sudo systemctl restart avatar-tank.service
 # Click the "Reboot" button in System section
 # System will safely reboot and auto-restart
 ```
+
+### 📶 4G Mobility & ZeroTier Guide
+
+This project is optimized for 4G mobility with ZeroTier providing a routable L3 overlay between laptop (UI) and the Raspberry Pi (rover).
+
+- ZeroTier: install and join the same network on both devices; verify IPs (e.g., `172.25.x.x`).
+- MediaMTX is configured to advertise the ZeroTier host in ICE via `webrtcAdditionalHosts` in `config/mediamtx.yml`.
+- Preferred transport is WebRTC over the ZeroTier path; TURN is generally not required with ZeroTier.
+- Ports in use: 5000 (Flask UI), 8554 (RTSP), 8888 (HLS), 8889 (WebRTC HTTP/WHEP), dynamic ICE/UDP.
+
+WebRTC behavior (non‑intrusive):
+- The page uses WebRTC as primary; it auto‑reconnects with exponential backoff and a stall watchdog.
+- Press Shift+S to toggle the hidden WebRTC stats box (bitrate, RTT, jitter, FPS, lost).
+- Prometheus metrics are available at `http://<pi>:5000/metrics` (basic stream gauges).
+
+Bandwidth and quality:
+- Video: H.264 with zerolatency tuning; ABR caps are applied internally.
+- Audio: Opus mono, VOIP tuning, VBR+DTX, 20ms ptime; resilient on variable 4G bandwidth.
+- If the carrier is constrained, prefer lower resolution/FPS in the UI; adaptation also occurs automatically.
+
+Troubleshooting over 4G/ZeroTier:
+- Verify ZeroTier link: `ping <pi-zerotier-ip>` from the laptop.
+- Check MediaMTX listeners: `curl http://localhost:9997/v3/paths/list` on the Pi.
+- ICE host advertisement: confirm `webrtcAdditionalHosts` contains the Pi’s ZeroTier IP.
+- MTU issues: if you see freezes on some carriers, set a lower MTU on the ZeroTier interface (e.g., 1300) and retest.
+- FPS mismatch: status shows detected FPS; ensure camera supports the selected FPS; we also set v4l2 framerate before streaming.
 
 ## 🔍 Monitoring & Diagnostics
 
@@ -488,7 +527,7 @@ If you experience crashes, run the service audit script:
 bash /home/havatar/Avatar-robot/scripts/check_services.sh
 ```
 
-See `INCIDENT_REPORT_2025-10-24_OOM_CRASH.md` for detailed crash analysis and prevention.
+See `docs/archive/` for historical incident reports and troubleshooting notes.
 
 ## 🔒 Security
 

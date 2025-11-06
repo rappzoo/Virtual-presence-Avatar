@@ -17,6 +17,11 @@
         this.listeners = {};
         this.pc = null;
         this.stream = null;
+        this.statsTimer = null;
+        this.lastBytes = 0;
+        this.lastFrames = 0;
+        this.lastStatTs = 0;
+        this.lastReport = null;
         this.init();
       }
       
@@ -26,6 +31,9 @@
       }
       
       async setupWebRTC() {
+        // Backoff state
+        this.backoffMs = 1000;
+        this.maxBackoffMs = 15000;
         try {
           // Create RTCPeerConnection with optimized audio settings
           const config = {
@@ -94,8 +102,22 @@
             console.log('WebRTC connection state:', this.pc.connectionState);
             if (this.pc.connectionState === 'connected') {
               this.emit('play');
+              this.backoffMs = 1000; // reset backoff on success
+              // Start stats watchdog
+              this.startStatsWatchdog();
             } else if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
               this.emit('disconnect');
+              this.stopStatsWatchdog();
+              // Attempt graceful restart with backoff
+              const delay = this.backoffMs;
+              this.backoffMs = Math.min(this.backoffMs * 2, this.maxBackoffMs);
+              console.log(`[WebRTC] Reconnecting in ${delay} ms...`);
+              setTimeout(() => {
+                try {
+                  this.destroy();
+                } catch (e) {}
+                this.init();
+              }, delay);
             }
           };
           
@@ -181,6 +203,7 @@
           this.pc.close();
           this.pc = null;
         }
+        this.stopStatsWatchdog();
         if (this.stream) {
           this.stream.getTracks().forEach(track => track.stop());
           this.stream = null;
@@ -188,6 +211,105 @@
         if (this.video) {
           this.video.srcObject = null;
         }
+      }
+
+      startStatsWatchdog() {
+        this.stopStatsWatchdog();
+        this.lastBytes = 0;
+        this.lastFrames = 0;
+        this.lastStatTs = Date.now();
+        this.statsTimer = setInterval(async () => {
+          if (!this.pc) return;
+          try {
+            const stats = await this.pc.getStats();
+            let bytes = 0;
+            let frames = 0;
+            let rtt = null;
+            let jitter = null;
+            let packetsLost = 0;
+            let fps = null;
+            stats.forEach(report => {
+              if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                if (typeof report.bytesReceived === 'number') bytes += report.bytesReceived;
+                if (typeof report.framesDecoded === 'number') frames += report.framesDecoded;
+                if (typeof report.packetsLost === 'number') packetsLost += report.packetsLost;
+                if (typeof report.jitter === 'number') jitter = report.jitter;
+                if (typeof report.framesPerSecond === 'number') fps = report.framesPerSecond;
+              }
+              if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                if (typeof report.currentRoundTripTime === 'number') rtt = report.currentRoundTripTime;
+              }
+            });
+            const now = Date.now();
+            const stalled = (bytes === this.lastBytes && frames === this.lastFrames && (now - this.lastStatTs) > 4000);
+            this.lastBytes = bytes;
+            this.lastFrames = frames;
+            this.lastStatTs = now;
+            // Compute bitrate kbps if last report exists
+            if (this.lastReport && this.lastReport.bytes > 0) {
+              const dt = (now - this.lastReport.ts) / 1000;
+              if (dt > 0.2) {
+                const kbps = ((bytes - this.lastReport.bytes) * 8) / 1000 / dt;
+                this.updateStatsUI({
+                  kbps: Math.max(0, Math.round(kbps)),
+                  rttMs: rtt != null ? Math.round(rtt * 1000) : null,
+                  jitterMs: jitter != null ? Math.round(jitter * 1000) : null,
+                  fps: fps != null ? Math.round(fps) : null,
+                  packetsLost
+                });
+              }
+            }
+            this.lastReport = { bytes, ts: now };
+            if (stalled) {
+              console.warn('[WebRTC] Stream appears stalled, restarting connection...');
+              const delay = this.backoffMs;
+              this.backoffMs = Math.min(this.backoffMs * 2, this.maxBackoffMs);
+              this.destroy();
+              setTimeout(() => this.init(), delay);
+            }
+          } catch (e) {
+            // ignore stats errors
+          }
+        }, 2000);
+      }
+
+      stopStatsWatchdog() {
+        if (this.statsTimer) {
+          clearInterval(this.statsTimer);
+          this.statsTimer = null;
+        }
+      }
+
+      updateStatsUI(s) {
+        try {
+          const box = document.getElementById('webrtcStatsBox');
+          if (!box || box.style.display === 'none') return;
+          box.innerHTML = `
+            <div><b>WebRTC Stats</b></div>
+            <div>Bitrate: ${s.kbps ?? '-'} kbps</div>
+            <div>RTT: ${s.rttMs ?? '-'} ms</div>
+            <div>Jitter: ${s.jitterMs ?? '-'} ms</div>
+            <div>FPS: ${s.fps ?? '-'} </div>
+            <div>Lost: ${s.packetsLost ?? '-'} </div>
+          `;
+          // Also reflect bitrate and cumulative data (from uptime) in the status bar
+          try {
+            const bwEl = document.getElementById('bwtext');
+            if (bwEl && typeof s.kbps === 'number') {
+              bwEl.textContent = `${s.kbps} kbps`;
+              // Integrate bitrate since uptime
+              if (!window.__bitrateData) {
+                window.__bitrateData = { accumKbit: 0, lastTs: Date.now() };
+              }
+              const now = Date.now();
+              const dtSec = Math.max(0, (now - window.__bitrateData.lastTs) / 1000);
+              window.__bitrateData.accumKbit += Math.max(0, s.kbps) * dtSec;
+              window.__bitrateData.lastTs = now;
+              const dataEl = document.getElementById('data-used');
+              if (dataEl) dataEl.textContent = `${(window.__bitrateData.accumKbit / 8000).toFixed(1)} MB`;
+            }
+          } catch (e) { /* ignore UI errors */ }
+        } catch (e) {}
       }
     };
   </script>
@@ -827,9 +949,24 @@
         gap: 10px;
       }
     }
+    #webrtcStatsBox {
+      position: fixed;
+      right: 10px;
+      bottom: 10px;
+      background: rgba(0,0,0,0.7);
+      color: #e0e0e0;
+      border: 1px solid #cc3300;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      z-index: 9999;
+      display: none;
+      min-width: 180px;
+    }
   </style>
 </head>
 <body>
+  <div id="webrtcStatsBox"></div>
 <div class="container">
   <div class="panel tts">
     <div id="recent" class="pills" style="display:none;"></div>
@@ -1020,11 +1157,11 @@
         <span id="fps">10</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Bandwidth:</span>
-        <span id="bwtext">0 KB/s</span>
+        <span class="info-label">Bitrate:</span>
+        <span id="bwtext">0 kbps</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Data:</span>
+        <span class="info-label">Data (Bitrate):</span>
         <span id="data-used">0 MB</span>
       </div>
       <div class="info-item">
@@ -1095,8 +1232,8 @@
       </div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
         <button id="fps10" class="r active" onclick="setFPS(10)" style="flex:1">10</button>
-        <button id="fps15" class="r" onclick="setFPS(15)" style="flex:1">15</button>
         <button id="fps20" class="r" onclick="setFPS(20)" style="flex:1">20</button>
+        <button id="fps30" class="r" onclick="setFPS(30)" style="flex:1">30</button>
       </div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
         <button class="btn" onclick="snap()" style="flex:1">Snapshot</button>
@@ -1127,12 +1264,67 @@
       </div>
     </div>
 
+    <div class="group">
+      <h4>WiFi</h4>
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div>
+          <span>Network: <span id="wifi-network">Loading...</span></span>
+          <span style="margin-left:8px">Signal: <span id="wifi-signal">---</span></span>
+        </div>
+        <button class="btn" onclick="openWifiManager()">Manage</button>
+      </div>
+    </div>
+
+    <!-- WiFi Manager Modal -->
+    <div id="wifi-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center">
+      <div style="background:#111;border:1px solid #333;border-radius:8px;min-width:300px;max-width:520px;width:92%;padding:10px">
+        <div class="row" style="gap:6px;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <h4 style="margin:0">Available Networks</h4>
+          <div class="row" style="gap:6px">
+            <button class="btn" onclick="loadWifiScanList()">Scan</button>
+            <button class="btn" onclick="loadWifiScanList(true)">Full</button>
+            <button class="btn" onclick="closeWifiManager()">Close</button>
+          </div>
+        </div>
+        <div id="wifi-list" style="max-height:260px;overflow:auto;border:1px solid #333;border-radius:6px;padding:6px">
+          <div style="font-size:10px;color:#888">Scanning...</div>
+        </div>
+        <div id="wifi-pass-panel" style="display:none;margin-top:8px;border-top:1px dashed #333;padding-top:8px">
+          <div style="font-size:12px;margin-bottom:4px">Connect to <b id="wifi-pass-ssid"></b></div>
+          <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            <input id="wifi-pass-input" class="input" placeholder="Password" style="flex:1" type="password" />
+          </div>
+          <label style="font-size:10px;color:#aaa;display:inline-flex;gap:6px;align-items:center;margin-right:8px">
+            <input type="checkbox" id="wifi-pass-save" checked /> Save
+          </label>
+          <button class="btn" onclick="confirmWifiConnect()">Connect</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h4>Audio Input</h4>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button id="startAudioInputBtn" class="btn" onclick="startAudioInput()" style="flex:1;background:rgba(255,100,100,0.8)">🎤 Start Audio Input</button>
+        <button id="stopAudioInputBtn" class="btn" onclick="stopAudioInput()" style="flex:1;background:rgba(100,100,100,0.5)" disabled>⏹️ Stop Audio Input</button>
+      </div>
+      <div id="audioInputStatus" style="font-size:9px;color:#888;margin-top:4px;text-align:center">Audio Input: OFF</div>
+    </div>
+
   </div>
 
 
 </div>
 
 <script>
+  // Toggle stats box with Shift+S (non-intrusive)
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 's' && e.shiftKey) {
+      const box = document.getElementById('webrtcStatsBox');
+      if (!box) return;
+      box.style.display = (box.style.display === 'none' || box.style.display === '') ? 'block' : 'none';
+    }
+  });
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
   loadWordDatabases();
@@ -1571,11 +1763,9 @@ let frameCount = 0;
 let lastFrameTime = Date.now();
 let currentFPS = 0;
 let configuredFPS = 10; // Track the configured/target FPS separately from measured FPS
-let bandwidthSamples = [];
 let vuMeterActive = false;
 let recordingActive = false;
-let totalDataUsed = 0;
-let lastBandwidthUpdate = Date.now();
+// bandwidth monitor removed
 let audioActive = false;
 let audioContext = null;
 let socket = null;
@@ -1649,6 +1839,24 @@ function initWebSocket() {
       updateMicButton();
     } else if (data.status === 'started') {
       updateMicStatus('Audio streaming active');
+    }
+  });
+
+  socket.on('audio_input_status', (data) => {
+    if (data.status === 'error') {
+      log('Audio input error: ' + (data.message || 'Unknown'));
+      updateAudioInputStatus('ERROR: ' + (data.message || 'Unknown'));
+      isAudioInputActive = false;
+    } else if (data.status === 'started') {
+      log('Audio input streaming started on server');
+      updateAudioInputStatus('ON - Connected to server');
+    } else if (data.status === 'stopped') {
+      log('Audio input streaming stopped on server');
+      updateAudioInputStatus('OFF');
+      isAudioInputActive = false;
+    } else if (data.status === 'already_started') {
+      log('Audio input already active');
+      updateAudioInputStatus('ON - Already active');
     }
   });
   
@@ -1768,10 +1976,7 @@ function updateDateTime() {
   }
 }
 
-// Real bandwidth monitoring variables
-let lastNetworkBytes = { wlan0: 0, zt2lrsngy5: 0 };
-let bandwidthHistory = [];
-let realBandwidthKBps = 0;
+// bandwidth monitor removed
 
 // Audio quality monitoring removed - no longer needed
 
@@ -1885,7 +2090,7 @@ function initVUMeter() {
 
 function updateVUMeter() {
   if (!vuMeterActive || !vuAnalyser) {
-    setTimeout(updateVUMeter, 100); // 10 FPS
+    setTimeout(updateVUMeter, 10); // 10 FPS
     return;
   }
   
@@ -2257,104 +2462,7 @@ window.restartVUMeter = restartVUMeter;
 
 // Audio quality monitoring removed - no longer needed
 
-async function updateBandwidth() {
-  const vid = sid('vid');
-  const now = Date.now();
-  
-  // Check if WebRTC is active or video has loaded metadata
-  const isStreamActive = (webrtcPlayer && webrtcPlayer.pc && webrtcPlayer.pc.connectionState === 'connected') || 
-                        (vid && (vid.naturalWidth > 0 || vid.videoWidth > 0));
-  
-  if (isStreamActive) {
-    frameCount++;
-    const timeDiff = now - lastFrameTime;
-    
-    if (timeDiff > 1000) {
-      currentFPS = frameCount / (timeDiff / 1000);
-      frameCount = 0;
-      lastFrameTime = now;
-      
-      // Keep showing the configured FPS, not measured FPS
-      const fpsEl = sid('fps');
-      if (fpsEl) fpsEl.textContent = configuredFPS;
-      
-      // Get actual stream bandwidth from system
-      try {
-        const response = await fetch('/api/stream/bandwidth');
-        if (response.ok) {
-          const data = await response.json();
-          realBandwidthKBps = data.stream_bandwidth_kbps || 0;
-          
-          // Update bandwidth history for smoothing
-          bandwidthHistory.push(realBandwidthKBps);
-          if (bandwidthHistory.length > 10) {
-            bandwidthHistory.shift();
-          }
-          
-          // Calculate smoothed bandwidth
-          const avgBandwidth = bandwidthHistory.reduce((a, b) => a + b, 0) / bandwidthHistory.length;
-          
-          const bwText = sid('bwtext');
-          if (bwText) {
-            bwText.textContent = Math.round(avgBandwidth) + ' KB/s';
-            // Apply color coding: green <100, yellow <300, red >=300
-            if (avgBandwidth < 100) {
-              bwText.style.color = '#0f0'; // Green
-            } else if (avgBandwidth < 300) {
-              bwText.style.color = '#ff0'; // Yellow
-            } else {
-              bwText.style.color = '#f00'; // Red
-            }
-          }
-          
-          // Update total data usage
-          const bandwidthTimeDiff = (now - lastBandwidthUpdate) / 1000;
-          if (bandwidthTimeDiff > 0) {
-            totalDataUsed += (avgBandwidth * bandwidthTimeDiff);
-            lastBandwidthUpdate = now;
-            
-            const totalDataEl = sid('data-used');
-            if (totalDataEl) {
-              const totalMB = totalDataUsed / 1024;
-              totalDataEl.textContent = totalMB.toFixed(1) + ' MB';
-            }
-          }
-        }
-      } catch (error) {
-        console.log('Bandwidth monitoring error:', error);
-        // Fallback to showing configured bitrate
-        const resDisplay = sid('resolution-display');
-        const currentRes = resDisplay ? resDisplay.textContent : '320p';
-        
-        let estimatedBandwidth = 0;
-        switch(currentRes) {
-          case '320p': estimatedBandwidth = 120; break;
-          case '480p': estimatedBandwidth = 180; break;
-          case '720p': estimatedBandwidth = 300; break;
-          default: estimatedBandwidth = 180;
-        }
-        
-        const bwText = sid('bwtext');
-        if (bwText) {
-          bwText.textContent = estimatedBandwidth + ' KB/s (est)';
-          bwText.style.color = '#ff0'; // Yellow for estimated
-        }
-      }
-    }
-  } else {
-    // Stream not active, show zero bandwidth
-    const bwText = sid('bwtext');
-    if (bwText) {
-      bwText.textContent = '0 KB/s';
-      bwText.style.color = '#666'; // Gray
-    }
-    
-    const fpsEl = sid('fps');
-    if (fpsEl) {
-      fpsEl.textContent = configuredFPS; // Show configured FPS even when stream inactive
-    }
-  }
-}
+// updateBandwidth removed
 
 function enhancedVUMeter() {
   const vuBar = sid('vu');
@@ -3589,7 +3697,7 @@ async function setFPS(fps) {
   if (fpsDisplay) fpsDisplay.textContent = fps;
   
   // Update active button styling immediately
-  ['fps10', 'fps15', 'fps20'].forEach(id => {
+  ['fps10', 'fps20', 'fps30'].forEach(id => {
     const el = sid(id);
     if (el) el.classList.remove('active');
   });
@@ -3607,6 +3715,13 @@ async function setFPS(fps) {
     
     if (result.success) {
       log('✅ Framerate updated smoothly to ' + fps);
+      // Restart stream to apply new FPS end-to-end
+      try {
+        await fetch('/api/stream/refresh', { method: 'POST' });
+        log('🔁 Stream refreshed to apply FPS ' + fps);
+      } catch (err) {
+        log('⚠️ Failed to auto-refresh stream: ' + err.message);
+      }
     } else {
       log('⚠️ Smooth update failed: ' + result.message);
       // Fallback to the regular framerate API
@@ -3619,6 +3734,12 @@ async function setFPS(fps) {
       
       if (fallbackResult.success) {
         log('Fallback framerate update successful');
+        try {
+          await fetch('/api/stream/refresh', { method: 'POST' });
+          log('🔁 Stream refreshed to apply FPS ' + fps);
+        } catch (err) {
+          log('⚠️ Failed to auto-refresh stream: ' + err.message);
+        }
       } else {
         log('❌ Framerate change failed: ' + fallbackResult.message);
       }
@@ -3794,7 +3915,7 @@ async function statusAll() {
     
     // Update active FPS button
     if (status.framerate) {
-      ['fps10', 'fps15', 'fps20'].forEach(id => {
+  ['fps10', 'fps20', 'fps30'].forEach(id => {
         const el = sid(id);
         if (el) el.classList.remove('active');
       });
@@ -3983,6 +4104,125 @@ function updateMicStatus(status) {
   }
 }
 
+async function updateWiFiStatus() {
+  try {
+    const response = await fetch('/api/wifi/status');
+    if (response.ok) {
+      const data = await response.json();
+      const networkEl = sid('wifi-network');
+      const signalEl = sid('wifi-signal');
+      const autoToggle = sid('wifi-auto-toggle');
+
+      if (networkEl) {
+        networkEl.textContent = data.network || 'Not connected';
+      }
+      if (signalEl) {
+        signalEl.textContent = data.signal_level || '---';
+      }
+      if (autoToggle && data.status && typeof data.status.auto_manage === 'boolean') {
+        autoToggle.checked = data.status.auto_manage;
+      }
+    } else {
+      // Handle error gracefully
+      const networkEl = sid('wifi-network');
+      const signalEl = sid('wifi-signal');
+      if (networkEl) networkEl.textContent = 'Error';
+      if (signalEl) signalEl.textContent = '---';
+    }
+  } catch (error) {
+    // Silent error handling
+    const networkEl = sid('wifi-network');
+    const signalEl = sid('wifi-signal');
+    if (networkEl) networkEl.textContent = 'Error';
+    if (signalEl) signalEl.textContent = '---';
+  }
+}
+
+// Backward-compatible wrapper expected by init()
+function refreshWifiScan(full = false) {
+  try {
+    // Existing inline scan logic lives inside init; we can trigger it via a custom event
+    const ev = new CustomEvent('wifi-scan-request', { detail: { full } });
+    window.dispatchEvent(ev);
+  } catch (e) {
+    // Fallback: directly call the fetch endpoints and ignore UI list if not present
+    fetch(full ? '/api/wifi/scan_full' : '/api/wifi/scan').catch(() => {});
+  }
+}
+
+function openWifiManager() {
+  const modal = sid('wifi-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    loadWifiScanList();
+  }
+}
+
+function closeWifiManager() {
+  const modal = sid('wifi-modal');
+  if (modal) modal.style.display = 'none';
+  const pass = sid('wifi-pass-panel');
+  if (pass) pass.style.display = 'none';
+}
+
+async function loadWifiScanList(full) {
+  const list = sid('wifi-list');
+  if (list) list.innerHTML = '<div style="font-size:10px;color:#888">Scanning...</div>';
+  try {
+    const res = await fetch(full ? '/api/wifi/scan_full' : '/api/wifi/scan');
+    const data = await res.json();
+    const nets = (data.networks || []).slice(0, 50);
+    if (!nets.length) {
+      list.innerHTML = '<div style="font-size:10px;color:#888">No networks found</div>';
+      return;
+    }
+    list.innerHTML = nets.map(n => {
+      const ssid = (n.ssid || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      const sig = (n.signal != null) ? `${n.signal}%` : '—';
+      const sec = n.security || '';
+      return `
+        <div class=\"row\" style=\"justify-content:space-between;align-items:center;border-bottom:1px solid #333;padding:4px 0\">
+          <div style=\"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%\">
+            <b>${ssid}</b>
+            <span style=\"font-size:10px;color:#aaa;margin-left:6px\">${sig} ${sec?('· '+sec):''}</span>
+          </div>
+          <button class=\"btn\" onclick=\"selectWifiNetwork('${ssid}')\">Select</button>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    if (list) list.innerHTML = '<div style="font-size:10px;color:#f66">Scan error</div>';
+  }
+}
+
+let _pendingWifiSsid = '';
+function selectWifiNetwork(ssid) {
+  _pendingWifiSsid = ssid;
+  const lbl = sid('wifi-pass-ssid');
+  const panel = sid('wifi-pass-panel');
+  const input = sid('wifi-pass-input');
+  const save = sid('wifi-pass-save');
+  if (lbl) lbl.textContent = ssid;
+  if (input) input.value = '';
+  if (save) save.checked = true;
+  if (panel) panel.style.display = 'block';
+}
+
+async function confirmWifiConnect() {
+  const ssid = _pendingWifiSsid || '';
+  const input = sid('wifi-pass-input');
+  const save = sid('wifi-pass-save');
+  const psk = input && input.value ? input.value : '';
+  try {
+    const res = await fetch('/api/wifi/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ssid, psk }) });
+    const data = await res.json();
+    log(`WiFi connect ${data.ok ? 'OK' : 'failed'}: ${data.msg || ''}`);
+    updateWiFiStatus();
+    closeWifiManager();
+  } catch (e) {
+    log('WiFi connect error: ' + e.message);
+  }
+}
+
 
 
 // Microphone test functions
@@ -4016,6 +4256,204 @@ function testAudioTone() {
     updateMicStatus('Playing test tone...');
   } else {
     updateMicStatus('WebSocket not connected');
+  }
+}
+
+// Audio input streaming variables
+let audioInputStream = null;
+let audioInputContext = null;
+let audioInputProcessor = null;
+let isAudioInputActive = false;
+
+async function startAudioInput() {
+  try {
+    if (isAudioInputActive) {
+      log('Audio input already active');
+      return;
+    }
+
+    log('Starting audio input streaming...');
+
+    // Check if we're on localhost (SSH tunnel) or HTTPS
+    const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const isHttps = location.protocol === 'https:';
+
+    // Allow microphone access on localhost even over HTTP (for SSH tunnels)
+    // Also allow if browser flags are set (Chrome: unsafely-treat-insecure-origin-as-secure)
+    if (!isLocalhost && !isHttps) {
+      log('Warning: Not on localhost/HTTPS. If using browser security flags, this may still work...');
+      // Don't throw error - let the browser decide with its security flags
+    }
+
+    // Check if getUserMedia is actually supported
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (isLocalhost) {
+        log('Warning: getUserMedia not detected on localhost, but attempting anyway...');
+      } else {
+        throw new Error('This browser does not support microphone access.');
+      }
+    }
+
+    // Check if Web Audio API is supported
+    if (!window.AudioContext && !window.webkitAudioContext) {
+      throw new Error('Web Audio API not supported in this browser.');
+    }
+
+    // Request microphone access
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true
+      }
+    });
+
+    audioInputStream = stream;
+
+    // Create AudioContext for raw PCM capture
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    audioInputContext = new AudioContext({ sampleRate: 16000 });
+
+    // Create source from microphone stream
+    const source = audioInputContext.createMediaStreamSource(stream);
+
+    // Prefer AudioWorklet for lower jitter; fallback to ScriptProcessor
+    if (audioInputContext.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+      try {
+        await audioInputContext.audioWorklet.addModule('js/audio_worklet_processor.js');
+        const workletNode = new AudioWorkletNode(audioInputContext, 'pcm16-writer');
+        audioInputProcessor = workletNode;
+
+        workletNode.port.onmessage = (event) => {
+          if (!isAudioInputActive || !socket) return;
+          const uint8Array = event.data;
+          const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
+          const base64Data = btoa(binaryString);
+          socket.emit('audio_input_data', { audio: base64Data, format: 'pcm16' });
+        };
+
+        // Connect the audio graph
+        source.connect(workletNode);
+        // Do not connect to destination to avoid audio loopback
+      } catch (e) {
+        console.warn('AudioWorklet unavailable, falling back to ScriptProcessor:', e);
+        const processor = audioInputContext.createScriptProcessor(2048, 1, 1);
+        audioInputProcessor = processor;
+        processor.onaudioprocess = (event) => {
+          if (!isAudioInputActive || !socket) return;
+          const inputBuffer = event.inputBuffer.getChannelData(0);
+          const pcm16 = new Int16Array(inputBuffer.length);
+          for (let i = 0; i < inputBuffer.length; i++) {
+            pcm16[i] = Math.max(-32768, Math.min(32767, inputBuffer[i] * 32768));
+          }
+          const uint8Array = new Uint8Array(pcm16.buffer);
+          const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
+          const base64Data = btoa(binaryString);
+          socket.emit('audio_input_data', { audio: base64Data, format: 'pcm16' });
+        };
+        source.connect(processor);
+        // Do not connect to destination to avoid loopback
+      }
+    } else {
+      const processor = audioInputContext.createScriptProcessor(2048, 1, 1);
+      audioInputProcessor = processor;
+      processor.onaudioprocess = (event) => {
+        if (!isAudioInputActive || !socket) return;
+        const inputBuffer = event.inputBuffer.getChannelData(0);
+        const pcm16 = new Int16Array(inputBuffer.length);
+        for (let i = 0; i < inputBuffer.length; i++) {
+          pcm16[i] = Math.max(-32768, Math.min(32767, inputBuffer[i] * 32768));
+        }
+        const uint8Array = new Uint8Array(pcm16.buffer);
+        const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
+        const base64Data = btoa(binaryString);
+        socket.emit('audio_input_data', { audio: base64Data, format: 'pcm16' });
+      };
+      source.connect(processor);
+      // Do not connect to destination to avoid loopback
+    }
+
+    // Connect to server
+    if (socket) {
+      socket.emit('start_audio_input');
+    }
+
+    isAudioInputActive = true;
+
+    // Update UI
+    const startBtn = sid('startAudioInputBtn');
+    const stopBtn = sid('stopAudioInputBtn');
+    if (startBtn) {
+      startBtn.disabled = true;
+      startBtn.style.background = 'rgba(100,100,100,0.5)';
+    }
+    if (stopBtn) {
+      stopBtn.disabled = false;
+      stopBtn.style.background = 'rgba(255,100,100,0.8)';
+    }
+
+    updateAudioInputStatus('ON - Raw PCM streaming');
+    log('Raw PCM audio input streaming started');
+
+  } catch (error) {
+    log('Failed to start audio input: ' + error.message);
+    updateAudioInputStatus('ERROR: ' + error.message);
+  }
+}
+
+function stopAudioInput() {
+  try {
+    log('Stopping audio input streaming...');
+    isAudioInputActive = false;
+
+    // Disconnect audio processor
+    if (audioInputProcessor) {
+      audioInputProcessor.disconnect();
+      audioInputProcessor = null;
+    }
+
+    // Close audio context
+    if (audioInputContext && audioInputContext.state !== 'closed') {
+      audioInputContext.close();
+      audioInputContext = null;
+    }
+
+    // Stop media stream
+    if (audioInputStream) {
+      audioInputStream.getTracks().forEach(track => track.stop());
+      audioInputStream = null;
+    }
+
+    // Notify server
+    if (socket) {
+      socket.emit('stop_audio_input');
+    }
+
+    // Update UI
+    const startBtn = sid('startAudioInputBtn');
+    const stopBtn = sid('stopAudioInputBtn');
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.style.background = 'rgba(255,100,100,0.8)';
+    }
+    if (stopBtn) {
+      stopBtn.disabled = true;
+      stopBtn.style.background = 'rgba(100,100,100,0.5)';
+    }
+
+    updateAudioInputStatus('OFF');
+    log('Audio input streaming stopped');
+
+  } catch (error) {
+    log('Error stopping audio input: ' + error.message);
+  }
+}
+
+function updateAudioInputStatus(status) {
+  const statusEl = sid('audioInputStatus');
+  if (statusEl) {
+    statusEl.textContent = 'Audio Input: ' + status;
   }
 }
 
@@ -5172,6 +5610,13 @@ async function init() {
   // SAFETY: Stop motors AND stream before page unload (browser close, navigation, refresh)
   // This saves 4G data by stopping the stream when user closes the page
   window.addEventListener('beforeunload', () => {
+    // Announce going to standby via beacon (must be fire-and-forget)
+    try {
+      const payload = new URLSearchParams({ event: 'disconnect', language: lang || 'en' });
+      navigator.sendBeacon('/client/event', payload);
+    } catch (e) {
+      // ignore
+    }
     console.log('[Motor Safety] Page unloading - stopping motors');
     emergencyStopMotors('Page closing/navigating');
     
@@ -5203,6 +5648,15 @@ async function init() {
       // setTimeout(() => refreshStream(), 1000); // DISABLED to prevent service crashes
     }
   });
+
+  // Announce client connected (non-blocking)
+  try {
+    fetch('/client/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'connect', language: lang || 'en' })
+    }).catch(() => {});
+  } catch (e) { /* ignore */ }
   
   // Auto-diagnose on startup
   setTimeout(() => {
@@ -5218,10 +5672,15 @@ async function init() {
   updateDateTime();
   setInterval(updateDateTime, 1000);
   setInterval(enhancedVUMeter, 50);
-  setInterval(updateBandwidth, 100); // Update bandwidth every 100ms
+  // bandwidth monitor removed
   
   // Periodic motor status check
   setInterval(checkMotorStatus, 30000); // Check every 30 seconds
+
+  // WiFi status updates
+  updateWiFiStatus();
+  refreshWifiScan();
+  setInterval(updateWiFiStatus, 30000); // Update WiFi status every 30 seconds
   
   // Initialize stream buttons
   updateStreamButtons();

@@ -169,8 +169,16 @@ class DeviceDetector:
                         card, card_name, device, device_name = match.groups()
                         alsa_device = f"plughw:{card},{device}"
                         
-                        # Prioritize USB devices
-                        priority = 2 if 'usb' in card_name.lower() else 1
+                        # Prioritize USB devices - check both card and device names
+                        card_lower = card_name.lower()
+                        device_lower = device_name.lower()
+                        is_usb = 'usb' in card_lower or 'usb audio' in device_lower
+                        
+                        # Give higher priority to USB microphones
+                        if is_usb:
+                            priority = 2  # Higher priority for USB devices
+                        else:
+                            priority = 1  # Lower priority for built-in devices
                         
                         self.audio_input.append({
                             'path': alsa_device,
@@ -201,8 +209,18 @@ class DeviceDetector:
                         card, card_name, device, device_name = match.groups()
                         alsa_device = f"plughw:{card},{device}"
                         
-                        # Prioritize USB devices and specific names
-                        priority = 2 if ('usb' in card_name.lower() or 'uac' in card_name.lower()) else 1
+                        # Prioritize USB devices and specific names - check by device name, not just card name
+                        card_lower = card_name.lower()
+                        device_lower = device_name.lower()
+                        is_usb = 'usb' in card_lower or 'uac' in card_lower or 'usb audio' in device_lower
+                        
+                        # Give highest priority to known USB audio device names
+                        if 'uacdemo' in card_lower:
+                            priority = 3  # Highest priority for the USB speaker
+                        elif is_usb:
+                            priority = 2  # Medium priority for other USB devices
+                        else:
+                            priority = 1  # Low priority for built-in devices
                         
                         self.audio_output.append({
                             'path': alsa_device,

@@ -34,6 +34,8 @@ webrtcAddress: "0.0.0.0:8889"
 webrtcAllowOrigin: "*"
 webrtcICEServers2:
   - url: "stun:stun.l.google.com:19302"
+webrtcAdditionalHosts:
+  - "172.25.216.108"  # Prefer ZeroTier host candidate for 4G mobility
 
 # SRT settings
 srt: no

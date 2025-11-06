@@ -1,24 +1,29 @@
 [Unit]
 Description=Avatar Tank System
-After=network.target
-Wants=network.target
+After=network-online.target sound.target
+Wants=network-online.target sound.target
 
 [Service]
 Type=simple
 User=havatar
 Group=havatar
 WorkingDirectory=/home/havatar/Avatar-robot
-ExecStart=/home/havatar/Avatar-robot/start_avatar_simple.sh
+ExecStart=/bin/bash /home/havatar/Avatar-robot/start_avatar_simple.sh
 Restart=always
+# Exponential-style backoff via StartLimit* + growing delays in script; base here
 RestartSec=5
-TimeoutStartSec=60
-TimeoutStopSec=10
+TimeoutStartSec=120
+TimeoutStopSec=30
 KillSignal=SIGTERM
-KillMode=process
-KillTimeoutSec=10
+KillMode=mixed
 LimitNOFILE=65535
 StandardOutput=journal
 StandardError=journal
+WatchdogSec=0
+NotifyAccess=none
+# Resource limits for reliability on 4G devices
+MemoryMax=350M
+CPUQuota=80%
 
 [Install]
 WantedBy=multi-user.target

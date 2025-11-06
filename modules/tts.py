@@ -110,11 +110,33 @@ class PiperTTS:
             return None
 
     def play_edge_tts_audio(self, audio_file):
-        """Play Edge-TTS audio using mpg123"""
+        """Play Edge-TTS audio using mpg123 with specific ALSA device"""
         try:
-            result = subprocess.run(['mpg123', '-q', str(audio_file)], 
-                                  capture_output=True, timeout=30)
-            return result.returncode == 0
+            # Convert MP3 to WAV and play via aplay to use proper ALSA device
+            # First decode MP3 to WAV using mpg123
+            temp_wav = str(audio_file).replace('.mp3', '.wav')
+            decode_result = subprocess.run(
+                ['mpg123', '-q', '-w', temp_wav, str(audio_file)],
+                capture_output=True, timeout=30
+            )
+            
+            if decode_result.returncode != 0:
+                print(f"[TTS] MP3 decode failed: {decode_result.stderr.decode()}")
+                return False
+            
+            # Play WAV using aplay with proper ALSA device
+            play_result = subprocess.run(
+                ['aplay', '-q', '-D', SPK_PLUG, temp_wav],
+                capture_output=True, timeout=30
+            )
+            
+            # Clean up temp WAV
+            try:
+                os.remove(temp_wav)
+            except:
+                pass
+            
+            return play_result.returncode == 0
         except Exception as e:
             print(f"[TTS] Audio playback error: {e}")
             return False
