@@ -27,6 +27,9 @@ except Exception:
 import eventlet
 eventlet.monkey_patch()
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+SNAPSHOTS_DIR = BASE_DIR / "snapshots"
+RECORDINGS_DIR = BASE_DIR / "recordings"
 
 # Ensure all modules can be imported
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1312,7 +1315,7 @@ def play_sound(sound_id):
             # Convert to temporary WAV file first (more reliable than piping)
             temp_wav = "/tmp/sound_playback.wav"
             
-            # Convert MP3 to WAV (timeout = 2x expected duration)
+            # Convert MP3 to WAV (timeout = 2x expected duration) - non-blocking
             convert_result = subprocess.run(
                 ['ffmpeg', '-y', '-i', str(sound_path), '-ar', '44100', '-ac', '2', temp_wav],
                 capture_output=True,
@@ -1323,26 +1326,40 @@ def play_sound(sound_id):
                 print(f"[Sound] FFmpeg conversion failed: {convert_result.stderr.decode('utf-8', 'ignore')}")
                 return jsonify({"ok": False, "msg": "MP3 to WAV conversion failed"})
             
-            # Play the WAV file through the detected speaker device with dynamic timeout
-            play_result = subprocess.run(
-                ['aplay', '-q', '-D', SPK_PLUG, temp_wav],
-                capture_output=True,
-                timeout=playback_timeout
-            )
+            # Play the WAV file asynchronously (non-blocking) to avoid delaying the response
+            def cleanup_and_play():
+                try:
+                    # Play the WAV file through the detected speaker device
+                    play_result = subprocess.run(
+                        ['aplay', '-q', '-D', SPK_PLUG, temp_wav],
+                        capture_output=True,
+                        timeout=playback_timeout
+                    )
+                    
+                    # Clean up temp file after playback
+                    try:
+                        os.unlink(temp_wav)
+                    except:
+                        pass
+                    
+                    if play_result.returncode == 0:
+                        print(f"[Sound] Successfully played sound {sound_id + 1} on {SPK_PLUG}")
+                    else:
+                        error_msg = play_result.stderr.decode('utf-8', 'ignore').strip() if play_result.stderr else "Unknown error"
+                        print(f"[Sound] Playback error: {error_msg}")
+                except Exception as e:
+                    print(f"[Sound] Background playback error: {e}")
+                    try:
+                        os.unlink(temp_wav)
+                    except:
+                        pass
             
-            # Clean up temp file
-            try:
-                os.unlink(temp_wav)
-            except:
-                pass
+            # Start playback in background thread (non-blocking)
+            threading.Thread(target=cleanup_and_play, daemon=True).start()
             
-            if play_result.returncode == 0:
-                print(f"[Sound] Successfully played sound {sound_id + 1} on {SPK_PLUG}")
-                return jsonify({"ok": True, "msg": f"Playing sound {sound_id + 1}"})
-            else:
-                error_msg = play_result.stderr.decode('utf-8', 'ignore').strip() if play_result.stderr else "Unknown error"
-                print(f"[Sound] Playback error: {error_msg}")
-                return jsonify({"ok": False, "msg": f"Sound playback failed: {error_msg}"})
+            # Return immediately without waiting for playback to complete
+            print(f"[Sound] Started playing sound {sound_id + 1} on {SPK_PLUG} (non-blocking)")
+            return jsonify({"ok": True, "msg": f"Playing sound {sound_id + 1}"})
                     
         except subprocess.TimeoutExpired:
             return jsonify({"ok": False, "msg": "Sound timeout"})
@@ -1544,7 +1561,7 @@ def set_volume():
                         cmd = ['amixer', 'set', control, f'{volume}%', 'unmute']
 
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
-
+            
                 if result.returncode == 0:
                     card_str = f"card {card}" if card else "default card"
                     print(f"[Audio] ✓ Volume set to {volume}% on {card_str} using '{control}' control")
@@ -1672,6 +1689,7 @@ def handle_disconnect():
 audio_input_streaming = False
 audio_input_thread = None
 audio_queue = queue.Queue(maxsize=100)  # Buffer up to 100 audio chunks
+audio_chunks_received = 0
 
 def audio_input_worker():
     """Background thread to handle audio input streaming with optimized buffering"""
@@ -1690,7 +1708,7 @@ def audio_input_worker():
             '-'  # Read from stdin
         ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        print("[Audio Input] Started continuous playback process")
+        print(f"[Audio Input] Started continuous playback process on device {speaker_device}")
 
         # Optimized buffering: small enough for low latency, large enough for smooth playback
         audio_buffer = bytearray()
@@ -1729,7 +1747,11 @@ def audio_input_worker():
                                 # Add raw PCM data directly to buffer
                                 audio_buffer.extend(pcm_data)
                                 try:
-                                    print(f"[Audio Input] Enqueued PCM: {len(pcm_data)} bytes, buffer={len(audio_buffer)}")
+                                    # Log occasionally to avoid spam
+                                    global audio_chunks_received
+                                    audio_chunks_received += 1
+                                    if audio_chunks_received % 25 == 0:
+                                        print(f"[Audio Input] Chunks: {audio_chunks_received}, last={len(pcm_data)} bytes, buffer={len(audio_buffer)}")
                                 except Exception:
                                     pass
 
@@ -1852,6 +1874,13 @@ def handle_audio_input_data(data):
                 audio_queue.put(data, block=False)
             except queue.Empty:
                 pass
+        # Light log to confirm reception without spamming
+        try:
+            global audio_chunks_received
+            if audio_chunks_received % 25 == 0:
+                print("[Audio Input] Received chunk enqueued")
+        except Exception:
+            pass
 
     except Exception as e:
         print(f"[WebSocket] Audio input data queue error: {e}")
@@ -2135,6 +2164,20 @@ def refresh_stream_api():
         except Exception as e:
             print(f"[Stream Refresh] Warning: Could not set v4l2 framerate: {e}")
         
+        # Try to set capture resolution and MJPEG pixel format to reduce USB bandwidth
+        if width and height:
+            try:
+                fmt_cmd = ['v4l2-ctl', f'--device={camera_dev}', f'--set-fmt-video=width={width},height={height},pixelformat=MJPG']
+                fmt_result = subprocess.run(fmt_cmd, capture_output=True, text=True, timeout=2)
+                if fmt_result.returncode == 0:
+                    print(f"[Stream Refresh] Set v4l2 format to {width}x{height} MJPG")
+                else:
+                    warn = fmt_result.stderr.strip() or fmt_result.stdout.strip()
+                    if warn:
+                        print(f"[Stream Refresh] Warning: Could not set MJPG format: {warn}")
+            except Exception as e:
+                print(f"[Stream Refresh] Warning: v4l2 format set failed: {e}")
+
         # Resolution-specific bitrate mapping tuned for low-latency over 4G
         video_bitrate_map = {
             "320p": ("200k", "300k", "600k"),   # (b:v, maxrate, bufsize)
@@ -2171,10 +2214,12 @@ def refresh_stream_api():
         bs_scaled = _fmt_k(int(_kbps(bs) * scale))
         
         print(f"[Stream Refresh] Starting new FFmpeg process with {resolution} ({width}x{height}@{fps}fps, {vb} target bitrate)...")
-        cmd = [
-            'ffmpeg', '-nostdin',
-            # Video input
-            '-f', 'v4l2', '-framerate', str(fps), '-thread_queue_size', '1024', '-i', camera_dev,
+        cmd = ['ffmpeg', '-nostdin']
+        cmd.extend(['-f', 'v4l2', '-framerate', str(fps)])
+        if width and height:
+            cmd.extend(['-video_size', f'{width}x{height}'])
+        cmd.extend(['-input_format', 'mjpeg', '-thread_queue_size', '1024', '-i', camera_dev])
+        cmd.extend([
             # Audio input (capture at 48k mono); resample with async smoothing to avoid jitter
             '-f', 'alsa', '-thread_queue_size', '8192', '-ar', '48000', '-ac', '1', '-i', 'plughw:3,0',
             # Processing
@@ -2182,7 +2227,7 @@ def refresh_stream_api():
             '-af', 'aresample=async=1:min_hard_comp=0.100:first_pts=0,volume=2.0',
             # Video encode
             '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-            '-x264-params', 'rc-lookahead=0:bframes=0:ref=2', 
+            '-x264-params', 'rc-lookahead=0:bframes=0:ref=2',
             '-b:v', vb_scaled,
             '-maxrate', mr_scaled,
             '-bufsize', bs_scaled,
@@ -2195,7 +2240,7 @@ def refresh_stream_api():
             '-rtsp_transport', 'tcp',
             '-reconnect', '1', '-reconnect_at_eof', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '2',
             '-f', 'rtsp', 'rtsp://127.0.0.1:8554/stream'
-        ]
+        ])
         
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
@@ -2328,26 +2373,7 @@ def start_recording_api():
             return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         global recording_process, recording_start_time, recording_filename
         
-        # First, check for any orphaned FFmpeg recording processes
-        import subprocess
-        try:
-            # Check for FFmpeg processes that are recording
-            result = subprocess.run(['pgrep', '-f', 'ffmpeg.*record'], capture_output=True, text=True)
-            if result.returncode == 0 and result.stdout.strip():
-                orphaned_pids = result.stdout.strip().split('\n')
-                print(f"[Recording Start] Found orphaned recording processes: {orphaned_pids}")
-                # Kill orphaned processes
-                for pid in orphaned_pids:
-                    try:
-                        subprocess.run(['kill', '-TERM', pid], check=False)
-                        print(f"[Recording Start] Killed orphaned FFmpeg process {pid}")
-                    except:
-                        pass
-                time.sleep(1)  # Give time for processes to terminate
-        except Exception as e:
-            print(f"[Recording Start] Error checking orphaned processes: {e}")
-        
-        # Check if already recording - improved state detection
+        # Check if already recording - improved state detection (fast, non-blocking)
         if recording_process:
             # Check if process is actually running or just a stale reference
             try:
@@ -2367,6 +2393,28 @@ def start_recording_api():
                 recording_process = None
                 recording_start_time = None
                 recording_filename = None
+        
+        # Check for orphaned processes in background (non-blocking, with timeout)
+        import subprocess
+        import threading
+        def cleanup_orphaned():
+            try:
+                result = subprocess.run(['pgrep', '-f', 'ffmpeg.*record'], 
+                                      capture_output=True, text=True, timeout=0.5)
+                if result.returncode == 0 and result.stdout.strip():
+                    orphaned_pids = result.stdout.strip().split('\n')
+                    print(f"[Recording Start] Found orphaned recording processes: {orphaned_pids}")
+                    for pid in orphaned_pids:
+                        try:
+                            subprocess.run(['kill', '-TERM', pid], check=False, timeout=0.2)
+                            print(f"[Recording Start] Killed orphaned FFmpeg process {pid}")
+                        except:
+                            pass
+            except:
+                pass  # Silently fail in background thread
+        
+        # Start cleanup in background thread (non-blocking)
+        threading.Thread(target=cleanup_orphaned, daemon=True).start()
         
         result = _start_reliable_recording()
         return jsonify(result)
@@ -2621,6 +2669,60 @@ def get_recordings():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/snapshots/<path:filename>')
+def get_snapshot_file(filename):
+    """Serve snapshot file with optional download"""
+    try:
+        base_path = SNAPSHOTS_DIR.resolve()
+        file_path = (base_path / filename).resolve()
+
+        try:
+            file_path.relative_to(base_path)
+        except ValueError:
+            return jsonify({'error': 'Invalid file path'}), 400
+
+        if not file_path.exists() or not file_path.is_file():
+            return jsonify({'error': 'File not found'}), 404
+
+        download_flag = request.args.get('download', '').lower()
+        download = download_flag in ('1', 'true', 'yes', 'download')
+
+        return send_file(
+            file_path,
+            as_attachment=download,
+            download_name=file_path.name if download else None,
+            mimetype='image/jpeg'
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recordings/<path:filename>')
+def get_recording_file(filename):
+    """Serve recording file with optional download"""
+    try:
+        base_path = RECORDINGS_DIR.resolve()
+        file_path = (base_path / filename).resolve()
+
+        try:
+            file_path.relative_to(base_path)
+        except ValueError:
+            return jsonify({'error': 'Invalid file path'}), 400
+
+        if not file_path.exists() or not file_path.is_file():
+            return jsonify({'error': 'File not found'}), 404
+
+        download_flag = request.args.get('download', '').lower()
+        download = download_flag in ('1', 'true', 'yes', 'download')
+
+        return send_file(
+            file_path,
+            as_attachment=download,
+            download_name=file_path.name if download else None,
+            mimetype='video/mp4'
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # ============== MediaMTX API Endpoints ==============
 
 @app.route('/api/mediamtx/status')
@@ -2807,14 +2909,29 @@ def _start_reliable_recording():
         # This approach avoids camera device conflicts
         rtsp_url = 'rtsp://localhost:8554/stream'
         
+        # Verify stream is ready before starting recording
+        try:
+            import requests
+            response = requests.get('http://localhost:9997/v3/paths/get/stream', timeout=2)
+            if response.status_code == 200:
+                path_data = response.json()
+                if not path_data.get('ready', False):
+                    return {'success': False, 'message': 'Stream is not ready. Please start the stream first.'}
+        except Exception as e:
+            print(f"[Reliable Recording] Warning: Could not verify stream status: {e}")
+        
         cmd = [
             'ffmpeg',
             '-rtsp_transport', 'tcp',  # Use TCP for reliability
             '-i', rtsp_url,  # Use stream instead of camera
-            '-c:v', 'libx264',
-            '-preset', 'fast',  # Faster encoding for recording
-            '-crf', '23',       # Good quality
+            # Copy video stream (no re-encoding, minimal CPU usage)
+            '-c:v', 'copy',  # Copy video stream (H264 is MP4 compatible)
+            # Re-encode audio from Opus to AAC (required for MP4 compatibility)
+            '-c:a', 'aac', '-b:a', '64k', '-ar', '48000', '-ac', '1',
             '-t', '300',        # Limit to 5 minutes to prevent huge files
+            '-y',  # Overwrite output file if it exists
+            # Reduce buffering to avoid interfering with live stream
+            '-fflags', '+nobuffer', '-flags', '+low_delay',
             recording_filename
         ]
         
@@ -2828,10 +2945,38 @@ def _start_reliable_recording():
             stdin=subprocess.PIPE
         )
         
-        # Wait a moment to check if it started successfully
-        time.sleep(1)
+        # Quick check if it started successfully (non-blocking, minimal delay)
+        time.sleep(0.5)  # Give FFmpeg time to initialize
         if recording_process.poll() is not None:
+            # Process terminated, read error message
             error_msg = "Recording process failed to start"
+            try:
+                # Process has terminated, safe to read stderr with short timeout
+                _, stderr_output = recording_process.communicate(timeout=0.5)
+                if stderr_output:
+                    error_details = stderr_output.decode('utf-8', errors='ignore')
+                    # Extract relevant error line
+                    error_lines = [line for line in error_details.split('\n') 
+                                 if any(keyword in line.lower() for keyword in ['error', 'failed', 'cannot', 'unable', 'connection refused', 'connection timed out'])]
+                    if error_lines:
+                        error_msg = f"Recording failed: {error_lines[-1][:150]}"
+                    # Log full error for debugging
+                    print(f"[Reliable Recording] Full FFmpeg error:\n{error_details[:1000]}")
+            except subprocess.TimeoutExpired:
+                # If communicate times out, try to read stderr directly
+                try:
+                    stderr_output = recording_process.stderr.read(4096)
+                    if stderr_output:
+                        error_details = stderr_output.decode('utf-8', errors='ignore')
+                        error_lines = [line for line in error_details.split('\n') 
+                                     if any(keyword in line.lower() for keyword in ['error', 'failed', 'cannot', 'unable'])]
+                        if error_lines:
+                            error_msg = f"Recording failed: {error_lines[-1][:150]}"
+                except:
+                    pass
+            except Exception as e:
+                print(f"[Reliable Recording] Error reading stderr: {e}")
+            
             print(f"[Reliable Recording] ✗ {error_msg}")
             return {'success': False, 'message': error_msg}
         
@@ -2862,8 +3007,8 @@ def _stop_reliable_recording():
         recording_process.stdin.write(b'q\n')
         recording_process.stdin.flush()
         
-        # Wait for process to finish
-        recording_process.wait(timeout=10)
+        # Wait for process to finish (reduced timeout for faster response)
+        recording_process.wait(timeout=3)
         
         # Check if file was created and get size
         file_size = 0

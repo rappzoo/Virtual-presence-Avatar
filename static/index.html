@@ -1237,7 +1237,9 @@
       </div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
         <button class="btn" onclick="snap()" style="flex:1">Snapshot</button>
-        <button class="btn" id="recordBtn" onclick="toggleRecording()" style="flex:1">Start Rec</button>
+        <button class="btn" onclick="openSnapshotsGallery()" style="padding:4px 8px;font-size:10px" title="View Snapshots">📷</button>
+        <button class="btn" id="recordBtn" onclick="toggleRecording()" style="flex:1;color:#fff">REC</button>
+        <button class="btn" onclick="openRecordingsGallery()" style="padding:4px 8px;font-size:10px" title="View Recordings">🎬</button>
       </div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
         <button class="btn" onclick="statusAll()" style="flex:1">System</button>
@@ -1298,6 +1300,38 @@
             <input type="checkbox" id="wifi-pass-save" checked /> Save
           </label>
           <button class="btn" onclick="confirmWifiConnect()">Connect</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Snapshots Gallery Modal -->
+    <div id="snapshots-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeSnapshotsGallery()">
+      <div style="background:#111;border:1px solid #333;border-radius:8px;min-width:400px;max-width:800px;width:92%;padding:10px;max-height:90vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div class="row" style="gap:6px;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <h4 style="margin:0">Snapshots Gallery</h4>
+          <div class="row" style="gap:6px">
+            <button class="btn" onclick="loadSnapshotsGallery()" style="padding:4px 8px;font-size:11px">Refresh</button>
+            <button class="btn" onclick="closeSnapshotsGallery()" style="padding:4px 8px;font-size:11px">Close</button>
+          </div>
+        </div>
+        <div id="snapshots-gallery" style="flex:1;overflow:auto;border:1px solid #333;border-radius:6px;padding:6px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+          <div style="font-size:10px;color:#888;grid-column:1/-1;text-align:center;padding:20px">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recordings Gallery Modal -->
+    <div id="recordings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeRecordingsGallery()">
+      <div style="background:#111;border:1px solid #333;border-radius:8px;min-width:400px;max-width:800px;width:92%;padding:10px;max-height:90vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div class="row" style="gap:6px;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <h4 style="margin:0">Recordings Gallery</h4>
+          <div class="row" style="gap:6px">
+            <button class="btn" onclick="loadRecordingsGallery()" style="padding:4px 8px;font-size:11px">Refresh</button>
+            <button class="btn" onclick="closeRecordingsGallery()" style="padding:4px 8px;font-size:11px">Close</button>
+          </div>
+        </div>
+        <div id="recordings-gallery" style="flex:1;overflow:auto;border:1px solid #333;border-radius:6px;padding:6px">
+          <div style="font-size:10px;color:#888;text-align:center;padding:20px">Loading...</div>
         </div>
       </div>
     </div>
@@ -3949,9 +3983,9 @@ async function recStart() {
     isRecording = true;
     const recordBtn = sid('recordBtn');
     if (recordBtn) {
-      recordBtn.textContent = 'Stop Rec';
-      recordBtn.style.backgroundColor = '#ff4444';
-      recordBtn.style.color = '#fff';
+      recordBtn.textContent = 'REC';
+      recordBtn.style.backgroundColor = '';
+      recordBtn.style.color = '#ff4444';
     }
     
     recordingActive = true;
@@ -3970,9 +4004,9 @@ async function recStart() {
       log('❌ Recording error: ' + result.message);
       isRecording = false;
       if (recordBtn) {
-        recordBtn.textContent = 'Start Rec';
+        recordBtn.textContent = 'REC';
         recordBtn.style.backgroundColor = '';
-        recordBtn.style.color = '';
+        recordBtn.style.color = '#fff';
       }
     }
   } catch (e) {
@@ -3981,9 +4015,9 @@ async function recStart() {
     isRecording = false;
     const recordBtn = sid('recordBtn');
     if (recordBtn) {
-      recordBtn.textContent = 'Start Rec';
+      recordBtn.textContent = 'REC';
       recordBtn.style.backgroundColor = '';
-      recordBtn.style.color = '';
+      recordBtn.style.color = '#fff';
     }
   }
 }
@@ -3997,9 +4031,9 @@ async function recStop() {
     isRecording = false;
     const recordBtn = sid('recordBtn');
     if (recordBtn) {
-      recordBtn.textContent = 'Start Rec';
+      recordBtn.textContent = 'REC';
       recordBtn.style.backgroundColor = '';
-      recordBtn.style.color = '';
+      recordBtn.style.color = '#fff';
     }
     
     recordingActive = false;
@@ -4025,6 +4059,115 @@ async function snap() {
   } catch (e) {
     log('❌ Snapshot error: ' + e.message);
   }
+}
+
+// Gallery functions
+function openSnapshotsGallery() {
+  const modal = sid('snapshots-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    loadSnapshotsGallery();
+  }
+}
+
+function closeSnapshotsGallery() {
+  const modal = sid('snapshots-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function loadSnapshotsGallery() {
+  const gallery = sid('snapshots-gallery');
+  if (!gallery) return;
+  
+  gallery.innerHTML = '<div style="font-size:10px;color:#888;grid-column:1/-1;text-align:center;padding:20px">Loading...</div>';
+  
+  try {
+    const response = await fetch('/api/snapshots');
+    const snapshots = await response.json();
+    
+    if (!Array.isArray(snapshots) || snapshots.length === 0) {
+      gallery.innerHTML = '<div style="font-size:10px;color:#888;grid-column:1/-1;text-align:center;padding:20px">No snapshots found</div>';
+      return;
+    }
+    
+    gallery.innerHTML = '';
+    snapshots.forEach(snapshot => {
+      const date = new Date(snapshot.modified * 1000);
+      const dateStr = date.toLocaleString();
+      const sizeKB = (snapshot.size / 1024).toFixed(1);
+      
+      const item = document.createElement('div');
+      item.style.cssText = 'border:1px solid #333;border-radius:6px;padding:6px;background:#1a1a1a;display:flex;flex-direction:column;gap:4px';
+      item.innerHTML = `
+        <img src="/api/snapshots/${encodeURIComponent(snapshot.name)}" style="width:100%;height:100px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('/api/snapshots/${encodeURIComponent(snapshot.name)}', '_blank')" />
+        <div style="font-size:9px;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${snapshot.name}">${snapshot.name}</div>
+        <div style="font-size:8px;color:#666">${sizeKB} KB</div>
+        <div style="font-size:8px;color:#666">${dateStr}</div>
+        <button class="btn" onclick="downloadSnapshot('${snapshot.name}')" style="padding:4px 8px;font-size:10px;width:100%">Download</button>
+      `;
+      gallery.appendChild(item);
+    });
+  } catch (e) {
+    gallery.innerHTML = '<div style="font-size:10px;color:#f44;grid-column:1/-1;text-align:center;padding:20px">Error loading snapshots: ' + e.message + '</div>';
+  }
+}
+
+function downloadSnapshot(filename) {
+  window.open('/api/snapshots/' + encodeURIComponent(filename) + '?download=1', '_blank');
+}
+
+function openRecordingsGallery() {
+  const modal = sid('recordings-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    loadRecordingsGallery();
+  }
+}
+
+function closeRecordingsGallery() {
+  const modal = sid('recordings-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function loadRecordingsGallery() {
+  const gallery = sid('recordings-gallery');
+  if (!gallery) return;
+  
+  gallery.innerHTML = '<div style="font-size:10px;color:#888;text-align:center;padding:20px">Loading...</div>';
+  
+  try {
+    const response = await fetch('/api/recordings');
+    const recordings = await response.json();
+    
+    if (!Array.isArray(recordings) || recordings.length === 0) {
+      gallery.innerHTML = '<div style="font-size:10px;color:#888;text-align:center;padding:20px">No recordings found</div>';
+      return;
+    }
+    
+    gallery.innerHTML = '';
+    recordings.forEach(recording => {
+      const date = new Date(recording.modified * 1000);
+      const dateStr = date.toLocaleString();
+      const sizeMB = (recording.size / 1024 / 1024).toFixed(2);
+      
+      const item = document.createElement('div');
+      item.style.cssText = 'border:1px solid #333;border-radius:6px;padding:8px;background:#1a1a1a;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px';
+      item.innerHTML = `
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:4px" title="${recording.name}">${recording.name}</div>
+          <div style="font-size:9px;color:#888">${sizeMB} MB • ${dateStr}</div>
+        </div>
+        <button class="btn" onclick="downloadRecording('${recording.name}')" style="padding:6px 12px;font-size:11px">Download</button>
+      `;
+      gallery.appendChild(item);
+    });
+  } catch (e) {
+    gallery.innerHTML = '<div style="font-size:10px;color:#f44;text-align:center;padding:20px">Error loading recordings: ' + e.message + '</div>';
+  }
+}
+
+function downloadRecording(filename) {
+  window.open('/api/recordings/' + encodeURIComponent(filename) + '?download=1', '_blank');
 }
 
 // Audio functions
@@ -4321,7 +4464,7 @@ async function startAudioInput() {
     // Prefer AudioWorklet for lower jitter; fallback to ScriptProcessor
     if (audioInputContext.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
       try {
-        await audioInputContext.audioWorklet.addModule('js/audio_worklet_processor.js');
+        await audioInputContext.audioWorklet.addModule('/static/js/audio_worklet_processor.js');
         const workletNode = new AudioWorkletNode(audioInputContext, 'pcm16-writer');
         audioInputProcessor = workletNode;
 
